@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createPluginExtensionRegistry } from '../../shared/plugins/plugin-extension-registry'
 import { pluginManifestSchema } from '../../shared/plugins/plugin-manifest'
-import type { PluginContentVerifier } from './plugin-content-integrity'
+import { PluginContentVerifier } from './plugin-content-integrity'
 import type { ValidDiscoveredPlugin } from './plugin-discovery'
 import type { PluginWorkerHandle } from './plugin-host-process'
 import { PluginWorkerController } from './plugin-worker-controller'
@@ -65,11 +65,14 @@ function controller(options: {
   isApproved: () => boolean
   logs?: PluginLogBuffer
 }): PluginWorkerController {
+  const contentVerifier = new PluginContentVerifier()
+  contentVerifier.verify = options.verify
+  contentVerifier.verifyNow = options.verify
   return new PluginWorkerController({
     entryPath: '/host-entry.js',
     workerFactory: options.factory,
     registry: createPluginExtensionRegistry(),
-    contentVerifier: { verify: options.verify } as unknown as PluginContentVerifier,
+    contentVerifier,
     capabilities: () => (options.isApproved() ? [] : null),
     isCurrentApproved: () => options.isApproved(),
     invokeCommand: vi.fn(async () => null),
@@ -158,7 +161,7 @@ describe('PluginWorkerController activation authority', () => {
     approved = false
     finishStart(startedWorker)
 
-    await expect(activation).rejects.toThrow('disabled during activation')
+    await expect(activation).rejects.toThrow(/changed or (is no longer approved|was disabled)/)
     expect(startedWorker.dispose).toHaveBeenCalledOnce()
     await subject.dispose()
   })
