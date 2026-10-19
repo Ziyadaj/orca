@@ -19,7 +19,9 @@ vi.mock('./editor-model-owner', () => ({ getEditorModelOwnerKey: () => '' }))
 import { useAppStore } from '@/store'
 import { editorModelRegistry } from '@/lib/editor-model-registry'
 import { getDiskBaselineSignature } from './diff-content-signature'
-import { isAutosaveSuspendedForFile, ORCA_EDITOR_FILE_RELOADED_EVENT } from './editor-autosave'
+import { ORCA_EDITOR_FILE_RELOADED_EVENT } from './editor-autosave'
+import { recordSelfWrite } from './editor-self-write-registry'
+import { scheduleEditorChangedOnDiskMark } from '@/hooks/editor-external-watch-disk-verification'
 import { markFileChangedOnDisk } from './editor-changed-on-disk-mark'
 import { toEditorModelUri } from './editor-model-uri'
 import { isProgrammaticContentSyncInFlight } from './monaco-programmatic-sync'
@@ -168,49 +170,31 @@ describe('reloadMountedModelFromDisk', () => {
     expect(clearEditorDraft).not.toHaveBeenCalled()
   })
 
-  it('undoing past the reload restores the conflict and old baseline; redo clears them', async () => {
-    openFiles = [{ ...file, lastKnownDiskSignature: 'pre-reload-signature' }]
-    const patchLiveFile = (patch: Partial<OpenFile>): void => {
-      openFiles = openFiles.map((openFile) => ({ ...openFile, ...patch }))
-    }
-    setExternalMutation.mockImplementation((_id, mutation) =>
-      patchLiveFile({ externalMutation: mutation ?? undefined })
+  it('drops the result when a write arrives during the read, before echo verification settles', async () => {
+    // Why: a recent self-write sends the watcher through an async echo check first.
+    recordSelfWrite(file.filePath, 'text Orca saved earlier')
+    const resolveRead = deferredRead()
+    const pending = reloadMountedModelFromDisk(file, mounted())
+    readRuntimeFileContentMock.mockReturnValue(new Promise(() => undefined))
+    scheduleEditorChangedOnDiskMark(
+      {
+        worktreeId: 'wt-1',
+        worktreePath: '/repo',
+        connectionId: undefined,
+        runtimeEnvironmentId: null
+      },
+      {
+        worktreeId: 'wt-1',
+        worktreePath: '/repo',
+        relativePath: 'notes.md',
+        runtimeEnvironmentId: null
+      },
+      [file.id]
     )
-    setLastKnownDiskSignature.mockImplementation((_id, signature) =>
-      patchLiveFile({ lastKnownDiskSignature: signature })
-    )
-    const reloadSignature = getDiskBaselineSignature('disk text')
+    resolveRead('disk text read before the newer write')
 
-    await expect(reloadMountedModelFromDisk(file, mounted())).resolves.toBe('applied')
-    model.pushEditOperations(
-      [],
-      [{ range: model.getFullModelRange(), text: 'disk text, then typing' }],
-      () => null
-    )
-    await model.undo()
-    expect(openFiles[0]?.externalMutation).toBeUndefined()
-
-    await model.undo()
+    await expect(pending).resolves.toBe('superseded')
     expect(model.getValue()).toBe('draft text')
-    expect(openFiles[0]?.externalMutation).toBe('changed')
-    expect(openFiles[0]?.lastKnownDiskSignature).toBe('pre-reload-signature')
-    expect(isAutosaveSuspendedForFile(openFiles[0]!)).toBe(true)
-
-    await model.redo()
-    expect(model.getValue()).toBe('disk text')
-    expect(openFiles[0]?.externalMutation).toBeUndefined()
-    expect(openFiles[0]?.lastKnownDiskSignature).toBe(reloadSignature)
-  })
-
-  it('stops restoring the conflict once a save re-stamps the baseline', async () => {
-    openFiles = [{ ...file, lastKnownDiskSignature: 'pre-reload-signature' }]
-    await expect(reloadMountedModelFromDisk(file, mounted())).resolves.toBe('applied')
-    openFiles = [{ ...file, externalMutation: undefined, lastKnownDiskSignature: 'saved' }]
-    setExternalMutation.mockClear()
-
-    await model.undo()
-
-    expect(setExternalMutation).not.toHaveBeenCalled()
   })
 
   it('drops a binary disk read', async () => {

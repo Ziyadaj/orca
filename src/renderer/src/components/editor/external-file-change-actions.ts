@@ -16,7 +16,10 @@ import {
   beginProgrammaticContentSync,
   endProgrammaticContentSync
 } from './monaco-programmatic-sync'
-import { watchUndoPastReload } from './reload-undo-conflict-restore'
+import {
+  resumeAutosaveAfterReloadUndo,
+  watchReloadUndoBoundary
+} from './reload-undo-autosave-pause'
 
 type AppState = ReturnType<typeof useAppStore.getState>
 
@@ -96,12 +99,11 @@ export async function reloadMountedModelFromDisk(
       detail: { fileId: file.id, content }
     })
   )
-  const reloadSignature = getDiskBaselineSignature(content)
-  state.setLastKnownDiskSignature(file.id, reloadSignature)
+  state.setLastKnownDiskSignature(file.id, getDiskBaselineSignature(content))
   state.clearEditorDraft(file.id)
   state.markFileDirty(file.id, false)
   state.setExternalMutation(file.id, null)
-  watchUndoPastReload(model, file.id, liveFile.lastKnownDiskSignature, reloadSignature)
+  watchReloadUndoBoundary(model, file.id)
   return 'applied'
 }
 
@@ -115,6 +117,7 @@ export function discardDraftAndReloadContent(
   state.clearEditorDraft(file.id)
   state.markFileDirty(file.id, false)
   state.setExternalMutation(file.id, null)
+  resumeAutosaveAfterReloadUndo(file.id)
   reloadContent(file)
 }
 

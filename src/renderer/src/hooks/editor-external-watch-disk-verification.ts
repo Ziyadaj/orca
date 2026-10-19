@@ -5,7 +5,10 @@ import {
   getOpenFilesForExternalFileChange,
   notifyEditorExternalFileChange
 } from '@/components/editor/editor-autosave'
-import { markFileChangedOnDisk } from '@/components/editor/editor-changed-on-disk-mark'
+import {
+  markFileChangedOnDisk,
+  noteDiskChangeReceived
+} from '@/components/editor/editor-changed-on-disk-mark'
 import { getDiskBaselineSignature } from '@/components/editor/diff-content-signature'
 import {
   clearSelfWrite,
@@ -137,6 +140,8 @@ export function scheduleEditorChangedOnDiskMark(
   if (fileIds.length === 0) {
     return
   }
+  // Why: a banner reload whose read is in flight must see this write now, not after verification.
+  noteDiskChangeReceived(fileIds)
   const absolutePath = joinPath(notification.worktreePath, notification.relativePath)
   const recentSelfWrite = getRecentSelfWrite(absolutePath, target.runtimeEnvironmentId)
   // Why: the fs event may be the echo of Orca's own save — verify disk really differs from our last write before showing a "changed on disk" banner.
@@ -237,6 +242,7 @@ export function scheduleEditorSelfMoveEchoVerification(
   if (fileIds.length === 0) {
     return
   }
+  noteDiskChangeReceived(fileIds)
   const state = useAppStore.getState()
   for (const fileId of fileIds) {
     const file = state.openFiles.find((candidate) => candidate.id === fileId)

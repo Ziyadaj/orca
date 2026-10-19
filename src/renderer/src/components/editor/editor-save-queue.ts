@@ -19,6 +19,7 @@ import {
 } from './editor-self-write-registry'
 import { getDiskBaselineSignature } from './diff-content-signature'
 import { trackExternalChangeConflictAction } from './editor-external-change-telemetry'
+import { resumeAutosaveAfterReloadUndo } from './reload-undo-autosave-pause'
 import { editorTabFileAccess } from '@/lib/local-file-access'
 
 export type AppStoreApi = Pick<StoreApi<AppState>, 'getState' | 'subscribe'>
@@ -144,6 +145,9 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
           (currentDraft !== undefined && currentDraft !== contentToSave) ||
           hasPendingEditorChange(file.id)
         nextState.markFileDirty(file.id, stillDirty)
+        if (trigger === 'user') {
+          resumeAutosaveAfterReloadUndo(file.id)
+        }
         if (!stillDirty) {
           nextState.clearEditorDraft(file.id)
         }

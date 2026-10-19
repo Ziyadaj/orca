@@ -18,12 +18,19 @@ export function getDiskChangeRevision(fileId: string): number {
   return diskChangeRevisionByFileId.get(fileId) ?? 0
 }
 
+/** Call when the change is received, before any async echo verification decides on the mark. */
+export function noteDiskChangeReceived(fileIds: readonly string[]): void {
+  for (const fileId of fileIds) {
+    diskChangeRevisionByFileId.set(fileId, getDiskChangeRevision(fileId) + 1)
+  }
+}
+
 export function markFileChangedOnDisk(
   state: ChangedOnDiskMarkState,
   file: OpenFile,
   options: { connectionId: string | undefined; origin: 'live' | 'restore' }
 ): void {
-  diskChangeRevisionByFileId.set(file.id, getDiskChangeRevision(file.id) + 1)
+  noteDiskChangeReceived([file.id])
   if (!file.isDirty || !canAutoSaveOpenFile(file)) {
     return
   }
