@@ -8,6 +8,10 @@ import type { OpenFile } from '@/store/slices/editor'
 vi.mock('@/lib/lazy-with-retry', () => ({
   lazyWithRetry: () => () => null
 }))
+// Why: the banner asks via the app-level confirmation provider, which these static renders omit.
+vi.mock('@/components/confirmation-dialog-context', () => ({
+  useConfirmationDialog: () => async () => false
+}))
 
 import { EditorContent, getMarkdownSourceLineOffset } from './EditorContent'
 
