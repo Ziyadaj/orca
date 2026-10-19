@@ -1,10 +1,10 @@
 // Names a full disk behind a failed install write. OpenSSH's sftp-server reports ENOSPC and EDQUOT
 // as the generic SSH_FX_FAILURE ("Failure"), so the host's free space is the only evidence.
 
-import { readdir, stat } from 'node:fs/promises'
+import { lstat, readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { RemoteInstallTransport } from './remote-install-transport'
-import { dfAvailableKb } from '../host-state/remote-filesystem-space'
+import { dfAvailableKb, formatKb } from '../host-state/remote-filesystem-space'
 import { execHostCommand } from '../../ssh/remote-exec/remote-host-exec'
 import { isUnconfirmedSshCommandTermination } from '../../ssh/remote-exec/remote-exec-command'
 import { isWindowsRemoteHost, type RemoteHostPlatform } from '../../ssh/ssh-remote-platform'
@@ -33,10 +33,6 @@ export class RemoteInstallOutOfSpaceError extends Error {
   }
 }
 
-function formatKb(kb: number): string {
-  return kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb} KB`
-}
-
 /** The `df -Pk` line for the deepest directory of `remotePath` that exists. */
 export function remoteFreeSpaceProbeCommand(remotePath: string): string {
   return (
@@ -46,14 +42,18 @@ export function remoteFreeSpaceProbeCommand(remotePath: string): string {
   )
 }
 
-export async function localTreeBytes(path: string): Promise<number> {
-  const info = await stat(path)
+/** What an upload of `path` writes: uploadDirectory follows the root but skips symlinks inside. */
+export async function localTreeBytes(path: string, root = true): Promise<number> {
+  const info = await (root ? stat(path) : lstat(path))
+  if (info.isSymbolicLink()) {
+    return 0
+  }
   if (!info.isDirectory()) {
     return info.size
   }
   let total = 0
   for (const entry of await readdir(path)) {
-    total += await localTreeBytes(join(path, entry))
+    total += await localTreeBytes(join(path, entry), false)
   }
   return total
 }
