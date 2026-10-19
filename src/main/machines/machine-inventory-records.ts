@@ -64,6 +64,9 @@ export function applyMachine(
     ...(existing?.sshTargetId ? { sshTargetId: existing.sshTargetId } : {}),
     ...(existing?.runtimeEnvironmentId
       ? { runtimeEnvironmentId: existing.runtimeEnvironmentId }
+      : {}),
+    ...(existing?.managedEnvironmentId
+      ? { managedEnvironmentId: existing.managedEnvironmentId }
       : {})
   }
   inventory.machines = existing
@@ -86,7 +89,7 @@ export function applyInventory(
   inventory.machines = inventory.machines.flatMap((record) =>
     listed.has(record.id)
       ? [record]
-      : record.sshTargetId || record.runtimeEnvironmentId
+      : record.sshTargetId || record.runtimeEnvironmentId || record.managedEnvironmentId
         ? [{ ...record, state: 'gone' as const, access: undefined }]
         : []
   )

@@ -20,6 +20,8 @@ export type MachineRecord = Omit<ProviderMachine, 'state'> & {
   lastError?: string
   sshTargetId?: string
   runtimeEnvironmentId?: string
+  /** The managed Orca server an SSH machine's worktrees run on; kept on gone rows as their link. */
+  managedEnvironmentId?: string
   /** Pairing codes are credentials: rows keep `access.pairingCode` empty and store only this. */
   pairingCodeSha256?: string
 }

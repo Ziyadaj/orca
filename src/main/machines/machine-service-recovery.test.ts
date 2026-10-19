@@ -92,6 +92,28 @@ describe('MachineService recovery', () => {
     expect(delay).not.toHaveBeenCalled()
   })
 
+  it('keeps a deleted machine as gone with its managed server link for its worktrees', async () => {
+    const { service, sshTargets } = await setup({
+      list: [inventory([machine()]), inventory([])],
+      delete: fail('not-found')
+    })
+    vi.mocked(sshTargets.connect).mockResolvedValueOnce({
+      targetId: 't',
+      status: 'connected',
+      error: null,
+      reconnectAttempt: 0,
+      managedServer: { kind: 'managed', environmentId: 'env-machine' }
+    })
+    await service.list(KEY)
+    await service.connect(KEY, 'sbx-1')
+    await service.delete(KEY, 'sbx-1')
+    const snapshot = await service.list(KEY, { force: true })
+    expect(snapshot.machines).toEqual([
+      expect.objectContaining({ id: 'sbx-1', state: 'gone', managedEnvironmentId: 'env-machine' })
+    ])
+    expect(snapshot.machines[0]).not.toHaveProperty('sshTargetId', expect.anything())
+  })
+
   it('does not retry when the endpoint is unchanged', async () => {
     const { service, sshTargets } = await setup({
       list: inventory([machine()]),

@@ -115,7 +115,10 @@ export class MachineConnectFlow {
       // Recorded before connecting: the target exists from here on, even if this connect fails.
       patch({ sshTargetId: machineSshTargetId(provider.providerKey, record.id) })
       const result = await this.dialSsh(record, access)
-      patch({ lastError: undefined })
+      patch({
+        lastError: undefined,
+        ...(result.environmentId ? { managedEnvironmentId: result.environmentId } : {})
+      })
       return { kind: 'ssh', ...result }
     }
     const result = await connectMachineOrcaServer(
