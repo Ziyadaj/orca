@@ -26,6 +26,13 @@ const watchedModels = new WeakSet<DiskBaselineModel>()
 /** Tabs whose latest edit came from another surface (rich markdown, notebook, CSV, diff, mobile). */
 const otherSurfaceTabs = new Set<string>()
 let modelEditReportingFor: string | null = null
+/** The text each tab's model last reported or was synced to. */
+const modelDrafts = new Map<string, string>()
+
+/** A pane pushed `text` (the tab's draft or loaded content) into the tab's model. */
+export function noteEditorModelSynced(fileId: string, text: string): void {
+  modelDrafts.set(fileId, text)
+}
 
 function bindTabModel(fileId: string, model: DiskBaselineModel): void {
   tabModels.set(fileId, model)
@@ -97,9 +104,10 @@ export function reportEditorModelEdit(fileId: string, report: () => void): void 
 }
 
 /** Every editor surface's content change for `fileId` passes here, Monaco's included. */
-export function noteEditorDraftSource(fileId: string): void {
+export function noteEditorDraftSource(fileId: string, draft: string): void {
   if (modelEditReportingFor === fileId) {
     otherSurfaceTabs.delete(fileId)
+    modelDrafts.set(fileId, draft)
   } else {
     otherSurfaceTabs.add(fileId)
   }
@@ -126,46 +134,73 @@ export function forgetEditorTabSaveSource(fileId: string): void {
   otherSurfaceTabs.delete(fileId)
   tabModels.delete(fileId)
   signedDiskContent.delete(fileId)
+  modelDrafts.delete(fileId)
+}
+
+/** A tab's live model and its stamp generation, or nothing when it has none. */
+function liveTabModel(fileId: string): DiskBaselineModel | undefined {
+  const model = tabModels.get(fileId)
+  return model && !model.isDisposed() ? model : undefined
 }
 
 /**
- * What a save of an edit tab writes and the disk version it must still find, decided by surface:
- * a tab edited through its Monaco model saves the model's text against the model's baseline (or,
- * before any model exists, a restored draft against its persisted base); a tab last edited on
- * another surface saves its draft unguarded, as before.
+ * Whether the tab's store draft is the model's text: the model's own last report or the last text
+ * synced into it. Why: a draft written around the model (a reload's Undo, a rolled-back mobile save
+ * while the tab is hidden) leaves the model holding other text, so the draft and the store's base
+ * are the pair that belong together.
  */
-export function resolveEditorSaveBaseline(
-  fileId: string,
-  draftOrFallback: string,
-  persistedSignature: string | undefined
-): {
+function modelHoldsStoreDraft(fileId: string, storeDraft: string | undefined): boolean {
+  return storeDraft === undefined || modelDrafts.get(fileId) === storeDraft
+}
+
+export type EditorSaveBaseline = {
   content: string
   signature: string | undefined
   fromModel: boolean
   modelGeneration?: number
-} {
+}
+
+/**
+ * What a save of an edit tab writes and the disk version it must still find, decided by surface:
+ * a tab edited through its Monaco model saves the model's text against the model's baseline; a
+ * draft with no model yet, or written around the model, saves against the store's base; a tab last
+ * edited on another surface saves its draft unguarded, as before.
+ */
+export function resolveEditorSaveBaseline(
+  fileId: string,
+  storeDraft: string | undefined,
+  fallbackContent: string,
+  storeSignature: string | undefined
+): EditorSaveBaseline {
+  const model = liveTabModel(fileId)
+  const draft = storeDraft ?? fallbackContent
+  const modelGeneration = model ? modelGenerations.get(model) : undefined
   if (otherSurfaceTabs.has(fileId)) {
-    const model = tabModels.get(fileId)
-    return {
-      content: draftOrFallback,
-      signature: undefined,
-      fromModel: false,
-      modelGeneration: model ? modelGenerations.get(model) : undefined
-    }
+    return { content: draft, signature: undefined, fromModel: false, modelGeneration }
   }
-  const model = tabModels.get(fileId)
-  if (!model || model.isDisposed()) {
-    return { content: draftOrFallback, signature: persistedSignature, fromModel: false }
+  if (!model || !modelHoldsStoreDraft(fileId, storeDraft)) {
+    return { content: draft, signature: storeSignature, fromModel: false, modelGeneration }
   }
   const signature = modelBaselines.get(model)
   return signature === undefined
-    ? {
-        content: draftOrFallback,
-        signature: undefined,
-        fromModel: false,
-        modelGeneration: modelGenerations.get(model)
-      }
-    : { content: model.getValue(), signature, fromModel: true }
+    ? { content: draft, signature: undefined, fromModel: false, modelGeneration }
+    : { content: model.getValue(), signature, fromModel: true, modelGeneration }
+}
+
+/**
+ * After a save of the model's own text: its base becomes the written version, unless a stamp
+ * since the save began (a reload) re-based the model on newer disk text.
+ */
+export function settleEditorModelAfterSave(
+  fileId: string,
+  capturedGeneration: number | undefined,
+  writtenSignature: string
+): void {
+  const model = liveTabModel(fileId)
+  if (model && modelGenerations.get(model) === capturedGeneration) {
+    modelBaselines.set(model, writtenSignature)
+    bumpModelGeneration(model)
+  }
 }
 
 /**
@@ -181,8 +216,9 @@ export function persistedEditorDraftFields(
   if (storeDraft === undefined) {
     return {}
   }
-  const model = tabModels.get(fileId)
-  const fromModel = !otherSurfaceTabs.has(fileId) && model !== undefined && !model.isDisposed()
+  const model = liveTabModel(fileId)
+  const fromModel =
+    model !== undefined && !otherSurfaceTabs.has(fileId) && modelHoldsStoreDraft(fileId, storeDraft)
   // Why the store's as fallback: a base dropped after another surface's save still lets a restore
   // notice an offline write, as before this check existed.
   const signature = fromModel ? (modelBaselines.get(model) ?? storeSignature) : storeSignature
@@ -255,5 +291,6 @@ export function __clearEditorModelDiskBaselinesForTests(): void {
   tabModels.clear()
   otherSurfaceTabs.clear()
   signedDiskContent.clear()
+  modelDrafts.clear()
   modelEditReportingFor = null
 }

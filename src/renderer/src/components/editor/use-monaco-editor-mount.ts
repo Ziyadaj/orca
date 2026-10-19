@@ -4,7 +4,11 @@ import { useAppStore } from '@/store'
 import { registerFileSearchSelectedTextProvider } from '@/lib/file-search-selection'
 import { syncContentOnMount } from './monaco-content-sync'
 import { toEditorModelUri } from './editor-model-uri'
-import { reportEditorModelEdit, stampAppliedEditorContent } from './editor-model-disk-baseline'
+import {
+  noteEditorModelSynced,
+  reportEditorModelEdit,
+  stampAppliedEditorContent
+} from './editor-model-disk-baseline'
 import {
   beginProgrammaticContentSync,
   endProgrammaticContentSync
@@ -121,6 +125,7 @@ export function useMonacoEditorMount(params: MonacoEditorMountParams): OnMount {
         }
         const model = editorInstance.getModel()
         if (model) {
+          noteEditorModelSynced(diskBaselineRef.current.fileId, model.getValue())
           stampAppliedEditorContent(model, model.getValue(), diskBaselineRef.current, 'mount')
         }
       } finally {

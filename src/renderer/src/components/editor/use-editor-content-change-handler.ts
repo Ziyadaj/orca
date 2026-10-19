@@ -41,7 +41,7 @@ export function useEditorContentChangeHandler({
         return
       }
       setEditorDraft(file.id, content)
-      noteEditorDraftSource(file.id)
+      noteEditorDraftSource(file.id, content)
       const ignoreTrailingWhitespace = file.language === 'markdown'
       if (file.mode === 'edit') {
         const original = fileContentsRef.current[file.id]?.content ?? ''

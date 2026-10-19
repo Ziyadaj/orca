@@ -10,6 +10,8 @@ import { createFakeEditorModel } from '../components/editor/editor-autosave-cont
 import {
   __clearEditorModelDiskBaselinesForTests,
   noteEditorDraftSource,
+  noteEditorModelSynced,
+  persistedEditorDraftFields,
   reportEditorModelEdit,
   resolveEditorSaveBaseline,
   stampEditorModelDiskBaseline
@@ -76,7 +78,7 @@ describe('mobile markdown bridge save guards', () => {
     stampEditorModelDiskBaseline(fileId, model, getDiskBaselineSignature('disk'))
     reportEditorModelEdit(fileId, () => {
       useAppStore.getState().setEditorDraft(fileId, 'desktop draft')
-      noteEditorDraftSource(fileId)
+      noteEditorDraftSource(fileId, 'desktop draft')
     })
     useAppStore.getState().markFileDirty(fileId, true)
     setupWindow({
@@ -96,10 +98,60 @@ describe('mobile markdown bridge save guards', () => {
         content: 'mobile edit'
       })
 
-      expect(resolveEditorSaveBaseline(fileId, 'desktop draft', undefined)).toMatchObject({
+      expect(resolveEditorSaveBaseline(fileId, 'desktop draft', '', undefined)).toMatchObject({
         fromModel: true,
         signature: getDiskBaselineSignature('disk')
       })
+    } finally {
+      detachAutosave()
+      detachBridge()
+      __clearEditorModelDiskBaselinesForTests()
+    }
+  })
+
+  it('persists the restored desktop draft, not the phone text a hidden pane left in the model', async () => {
+    openMarkdownFile()
+    const fileId = '/repo/README.md'
+    const model = createFakeEditorModel('desktop draft')
+    stampEditorModelDiskBaseline(fileId, model, getDiskBaselineSignature('disk'))
+    reportEditorModelEdit(fileId, () => {
+      useAppStore.getState().setEditorDraft(fileId, 'desktop draft')
+      noteEditorDraftSource(fileId, 'desktop draft')
+    })
+    useAppStore.getState().markFileDirty(fileId, true)
+    setupWindow({
+      readFile: vi.fn().mockResolvedValue({ content: 'desktop draft', isBinary: false }),
+      writeFile: vi.fn().mockImplementation(async () => {
+        // The source pane synced the phone's text into the model, then the user switched tabs.
+        model.setText('mobile edit')
+        noteEditorModelSynced(fileId, 'mobile edit')
+        throw new Error('disk full')
+      })
+    })
+    const detachBridge = attachMobileMarkdownBridge()
+    const detachAutosave = attachEditorAutosaveController(useAppStore as never)
+
+    try {
+      await sendRequest({
+        id: 'save-fail',
+        operation: 'save',
+        worktreeId: 'wt-1',
+        tabId: 'tab-md',
+        baseVersion: hashMarkdownContent('desktop draft'),
+        content: 'mobile edit'
+      })
+
+      expect(
+        persistedEditorDraftFields(
+          fileId,
+          useAppStore.getState().editorDrafts[fileId],
+          getDiskBaselineSignature('disk')
+        ).dirtyDraftContent
+      ).toBe('desktop draft')
+      expect(
+        resolveEditorSaveBaseline(fileId, 'desktop draft', '', getDiskBaselineSignature('disk'))
+          .content
+      ).toBe('desktop draft')
     } finally {
       detachAutosave()
       detachBridge()

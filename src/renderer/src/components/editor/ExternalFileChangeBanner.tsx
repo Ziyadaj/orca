@@ -89,7 +89,11 @@ function adoptDiskBaseline(fileId: string, signature: string): void {
 }
 
 /** `seenDiskContent`: the disk text the compare dialog showed, when Keep was chosen there. */
-export function keepTabEditsOverExternalChange(file: OpenFile, seenDiskContent?: string): void {
+/** Resolves once the dismissal settles (after the disk read, when one is needed). */
+export async function keepTabEditsOverExternalChange(
+  file: OpenFile,
+  seenDiskContent?: string
+): Promise<void> {
   const state = useAppStore.getState()
   if (seenDiskContent !== undefined) {
     // Why: adopt only the version the user compared against; a later write makes the next save refuse.
@@ -124,7 +128,7 @@ export function keepTabEditsOverExternalChange(file: OpenFile, seenDiskContent?:
     }
     useAppStore.getState().setExternalMutation(file.id, null)
   }
-  void readRuntimeFileContent({
+  await readRuntimeFileContent({
     target,
     filePath: file.filePath,
     relativePath: file.relativePath,
@@ -157,9 +161,15 @@ export function ExternalFileChangeBanner({
     trackExternalChangeConflictAction(file, 'reload')
     reloadTabContentFromDisk(file, reloadContent)
   }
+  const [keepPending, setKeepPending] = useState(false)
   const handleKeepEdits = (seenDiskContent?: string): void => {
+    // Why: one dismissal at a time; its disk read can take a while on a slow remote.
+    if (keepPending) {
+      return
+    }
+    setKeepPending(true)
     trackExternalChangeConflictAction(file, 'keep')
-    keepTabEditsOverExternalChange(file, seenDiskContent)
+    void keepTabEditsOverExternalChange(file, seenDiskContent).finally(() => setKeepPending(false))
   }
   const handleCompare = (): void => {
     trackExternalChangeConflictAction(file, 'compare')
@@ -192,7 +202,13 @@ export function ExternalFileChangeBanner({
               'Reload from Disk'
             )}
           </Button>
-          <Button type="button" size="xs" variant="ghost" onClick={() => handleKeepEdits()}>
+          <Button
+            type="button"
+            size="xs"
+            variant="ghost"
+            disabled={keepPending}
+            onClick={() => handleKeepEdits()}
+          >
             {translate(
               'auto.components.editor.ExternalFileChangeBanner.a95d02c644',
               'Keep My Edits'

@@ -11,6 +11,7 @@ import type { MonacoModelRegistry, DisposableMonacoModel } from './diff-monaco-m
 import { toEditorModelUri } from './editor-model-uri'
 import { getEditorModelOwnerKey } from './editor-model-owner'
 import { forgetEditorTabSaveSource } from './editor-model-disk-baseline'
+import { forgetChangedOnDiskMark } from './editor-changed-on-disk-mark'
 import type { WorktreeOperationRouteState } from '@/lib/worktree-operation-route'
 
 type EditorStore = Pick<
@@ -248,6 +249,7 @@ export function attachClosedEditorTabCleanup(
         pendingFiles.set(ownerKey(descriptor), descriptor)
         if (!liveFile) {
           forgetEditorTabSaveSource(file.id)
+          forgetChangedOnDiskMark(file.id)
         }
         removed = true
         if (file.mode === 'edit' && registry) {

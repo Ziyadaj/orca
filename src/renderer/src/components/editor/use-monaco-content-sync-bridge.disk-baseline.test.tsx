@@ -47,7 +47,7 @@ it('re-bases the model when a reload lands exactly the text the model already ho
 
   rerender({ diskContent: 'D' })
 
-  expect(resolveEditorSaveBaseline('tab', 'D', undefined).signature).toBe(
+  expect(resolveEditorSaveBaseline('tab', undefined, 'D', undefined).signature).toBe(
     getDiskBaselineSignature('D')
   )
 })
@@ -109,7 +109,7 @@ it('does not take a reload as the base while a paste kept it out of the model', 
   // A clean reload to E arrives mid paste; the model keeps D + paste.
   rerender({ content: 'E' })
 
-  expect(resolveEditorSaveBaseline('tab', 'D + paste', undefined).signature).toBe(
+  expect(resolveEditorSaveBaseline('tab', undefined, 'D', undefined).signature).toBe(
     getDiskBaselineSignature('D')
   )
 })

@@ -8,6 +8,11 @@ type ChangedOnDiskMarkState = {
 
 const markGenerations = new Map<string, number>()
 
+/** A closed tab's id can come back for another file session. */
+export function forgetChangedOnDiskMark(fileId: string): void {
+  markGenerations.delete(fileId)
+}
+
 /** Advances with every changed-on-disk mark, so a pending dismissal can tell a newer conflict arrived. */
 export function getChangedOnDiskMarkGeneration(fileId: string): number {
   return markGenerations.get(fileId) ?? 0

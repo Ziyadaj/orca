@@ -31,7 +31,7 @@ import {
 import {
   resolveEditorSaveBaseline,
   settleEditorModelAfterOtherSurfaceSave,
-  restampEditorModelDiskBaseline
+  settleEditorModelAfterSave
 } from './editor-model-disk-baseline'
 
 export type AppStoreApi = Pick<StoreApi<AppState>, 'getState' | 'subscribe'>
@@ -118,11 +118,17 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
         }
 
         flushPendingEditorChange(file.id, trigger === 'autosave')
-        const draftOrFallback = store.getState().editorDrafts[file.id] ?? fallbackContent
+        const storeDraft = store.getState().editorDrafts[file.id]
+        const draftOrFallback = storeDraft ?? fallbackContent
         // Why one read: an edit tab's text and the disk version it is based on must come together.
         const saveBaseline =
           liveFile.mode === 'edit'
-            ? resolveEditorSaveBaseline(file.id, draftOrFallback, liveFile.lastKnownDiskSignature)
+            ? resolveEditorSaveBaseline(
+                file.id,
+                storeDraft,
+                fallbackContent,
+                liveFile.lastKnownDiskSignature
+              )
             : { content: draftOrFallback, signature: undefined, fromModel: false }
         const contentToSave = saveBaseline.content
         if (
@@ -180,9 +186,16 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
         }
         // Why: disk now holds contentToSave even if a quiesce superseded this save; a stale baseline would refuse the next one.
         const writtenSignature = getWrittenContentDiskSignature(contentToSave)
-        store.getState().setLastKnownDiskSignature(file.id, writtenSignature)
+        // Why only if unchanged: a reload while a slow remote reply was in flight recorded newer disk.
+        const storeAfterWrite = store.getState()
+        if (
+          storeAfterWrite.openFiles.find((openFile) => openFile.id === file.id)
+            ?.lastKnownDiskSignature === liveFile.lastKnownDiskSignature
+        ) {
+          storeAfterWrite.setLastKnownDiskSignature(file.id, writtenSignature)
+        }
         if (saveBaseline.fromModel) {
-          restampEditorModelDiskBaseline(file.id, writtenSignature)
+          settleEditorModelAfterSave(file.id, saveBaseline.modelGeneration, writtenSignature)
         } else {
           // Why: another surface (rich markdown, CSV, notebook) changed disk under the retained model;
           // its next mount re-bases from the store record, which now holds the written version.

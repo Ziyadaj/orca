@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useRef, type MutableRefObject } from 'rea
 import type { editor } from 'monaco-editor'
 import { syncContentUpdate, type MonacoContentSyncMode } from './monaco-content-sync'
 import {
+  noteEditorModelSynced,
   reportEditorModelEdit,
   stampAppliedEditorContent,
   type EditorDiskBaselineSource
@@ -114,6 +115,9 @@ export function useMonacoContentSyncBridge(params: {
     // Why the model's own text: a reload can land text the model already holds, and a push skipped
     // mid paste must not stamp a base for text the model doesn't hold. Why only on a push or a disk
     // change: echoes of the user's own typing can't make the model match new disk text.
+    if (pushed) {
+      noteEditorModelSynced(diskBaselineRef.current.fileId, model.getValue())
+    }
     if (pushed || diskChanged) {
       stampAppliedEditorContent(model, model.getValue(), diskBaselineRef.current, 'sync')
     }

@@ -55,7 +55,7 @@ it("reports a finished chunked paste as the model's own edit, so the next save s
         language: 'typescript',
         onSave: vi.fn(),
         // The panel's content handler: records the draft and where it came from.
-        onContentChange: () => noteEditorDraftSource('tab')
+        onContentChange: (value: string) => noteEditorDraftSource('tab', value)
       }
     },
     readOnlyRef: { current: false },
@@ -70,7 +70,7 @@ it("reports a finished chunked paste as the model's own edit, so the next save s
 
   container.dispatchEvent(new Event('paste'))
 
-  expect(resolveEditorSaveBaseline('tab', 'base + pasted', undefined)).toMatchObject({
+  expect(resolveEditorSaveBaseline('tab', 'base + pasted', '', undefined)).toMatchObject({
     fromModel: true,
     signature: getDiskBaselineSignature('base')
   })

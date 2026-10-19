@@ -17,18 +17,23 @@ import {
 import {
   __clearEditorModelDiskBaselinesForTests,
   noteEditorDraftSource,
+  noteEditorModelSynced,
   reportEditorModelEdit,
   stampAppliedEditorContent
 } from './editor-model-disk-baseline'
 import { getDiskBaselineSignature } from './diff-content-signature'
-import { keepTabEditsOverExternalChange } from './ExternalFileChangeBanner'
+import {
+  keepTabEditsOverExternalChange,
+  reloadTabContentFromDisk
+} from './ExternalFileChangeBanner'
 import { buildEditorSessionData } from '@/lib/workspace-session'
 import type * as RuntimeFileReadClient from '@/runtime/runtime-file-read-client'
 
 const mocks = vi.hoisted(() => {
   const store: { current: StoreApi<AppState> | null } = { current: null }
-  return { store, readRuntimeFileContent: vi.fn() }
+  return { store, readRuntimeFileContent: vi.fn(), toast: vi.fn() }
 })
+vi.mock('sonner', () => ({ toast: Object.assign(mocks.toast, { error: vi.fn() }) }))
 vi.mock('@/lib/connection-context', () => ({ getConnectionIdForFile: () => undefined }))
 vi.mock('@/store', () => ({
   useAppStore: { getState: () => mocks.store.current?.getState() }
@@ -64,6 +69,7 @@ function setUp(disk: string, opened: string, eol: '\n' | '\r\n' = '\n'): Harness
     mode: 'edit'
   })
   const model = createFakeEditorModel(opened, eol)
+  noteEditorModelSynced(FILE_ID, model.getValue())
   stampAppliedEditorContent(
     model,
     model.getValue(),
@@ -76,6 +82,7 @@ function setUp(disk: string, opened: string, eol: '\n' | '\r\n' = '\n'): Harness
     model,
     showInPane: (paneText, diskContent, phase = 'sync') => {
       model.setText(paneText)
+      noteEditorModelSynced(FILE_ID, model.getValue())
       stampAppliedEditorContent(
         model,
         model.getValue(),
@@ -87,7 +94,7 @@ function setUp(disk: string, opened: string, eol: '\n' | '\r\n' = '\n'): Harness
       model.setText(text)
       reportEditorModelEdit(FILE_ID, () => {
         store.getState().setEditorDraft(FILE_ID, text)
-        noteEditorDraftSource(FILE_ID)
+        noteEditorDraftSource(FILE_ID, text)
       })
       store.getState().markFileDirty(FILE_ID, true)
     },
@@ -204,6 +211,7 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
   it('bases a restored draft on its persisted signature, not the disk loaded at restore', async () => {
     const tab = attach(setUp('B', 'B'))
     const restored = createFakeEditorModel('draft from A')
+    noteEditorModelSynced(FILE_ID, 'draft from A')
     stampAppliedEditorContent(
       restored,
       'draft from A',
@@ -226,7 +234,7 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
     const tab = attach(setUp('A', 'A'))
     tab.disk.files.set(FILE_ID, 'B')
     tab.store.getState().setEditorDraft(FILE_ID, 'rich editor text')
-    noteEditorDraftSource(FILE_ID)
+    noteEditorDraftSource(FILE_ID, 'rich editor text')
     tab.store.getState().markFileDirty(FILE_ID, true)
     await tab.save()
 
@@ -237,11 +245,11 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
     // Source mode loaded O; the rich editor saved D1 (unguarded) and kept typing D2.
     const tab = attach(setUp('O', 'O'))
     tab.store.getState().setEditorDraft(FILE_ID, 'D1')
-    noteEditorDraftSource(FILE_ID)
+    noteEditorDraftSource(FILE_ID, 'D1')
     tab.store.getState().markFileDirty(FILE_ID, true)
     await tab.save()
     tab.store.getState().setEditorDraft(FILE_ID, 'D2')
-    noteEditorDraftSource(FILE_ID)
+    noteEditorDraftSource(FILE_ID, 'D2')
     tab.store.getState().markFileDirty(FILE_ID, true)
     // Back in source mode the retained model mounts with D2.
     tab.model.setText('D2')
@@ -345,7 +353,7 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
     )
     // The rich editor saves D1 (unguarded) slowly…
     tab.store.getState().setEditorDraft(FILE_ID, 'D1')
-    noteEditorDraftSource(FILE_ID)
+    noteEditorDraftSource(FILE_ID, 'D1')
     tab.store.getState().markFileDirty(FILE_ID, true)
     const richSave = tab.save()
     await vi.waitFor(() => expect(tab.disk.fs.writeFile).toHaveBeenCalledTimes(1))
@@ -381,7 +389,7 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
       }
     )
     tab.store.getState().setEditorDraft(FILE_ID, 'D1')
-    noteEditorDraftSource(FILE_ID)
+    noteEditorDraftSource(FILE_ID, 'D1')
     tab.store.getState().markFileDirty(FILE_ID, true)
     const richSave = tab.save()
     await vi.waitFor(() => expect(tab.disk.fs.writeFile).toHaveBeenCalledTimes(1))
@@ -443,6 +451,59 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
     // A restore must never pair the pre-paste draft with the saved text's version.
     expect(persisted?.dirtyDraftContent).toBe('A typed + pasted')
     expect(persisted?.lastKnownDiskSignature).toBe(getDiskBaselineSignature('A typed + pasted'))
+  })
+
+  it("keeps a reload's Undo draft paired with its own base while the tab's model holds the reload", async () => {
+    const tab = attach(setUp('A', 'A'))
+    tab.store.getState().setLastKnownDiskSignature(FILE_ID, getDiskBaselineSignature('A'))
+    tab.type('D')
+    tab.disk.files.set(FILE_ID, 'B')
+    const file = tab.store.getState().openFiles[0]!
+    // Reload: the model takes B; then the user switches tabs, so no pane re-syncs it.
+    reloadTabContentFromDisk(file, () => {
+      tab.showInPane('B', 'B')
+      tab.store.getState().setLastKnownDiskSignature(FILE_ID, getDiskBaselineSignature('B'))
+    })
+    const undo: () => void = mocks.toast.mock.calls[0]?.[1]?.action?.onClick
+    undo()
+
+    const state = tab.store.getState()
+    const persisted = buildEditorSessionData(state.openFiles, state.editorDrafts, {}, {}, {})
+      .openFilesByWorktree?.['wt-1']?.[0]
+    expect(persisted?.dirtyDraftContent).toBe('D')
+    expect(persisted?.lastKnownDiskSignature).toBe(getDiskBaselineSignature('A'))
+    // Saving the restored draft is checked against the version it was edited from.
+    await expect(tab.save()).rejects.toThrow()
+    expect(tab.disk.files.get(FILE_ID)).toBe('B')
+  })
+
+  it('adopts a slow save reply only if no reload re-based the tab meanwhile', async () => {
+    const tab = attach(setUp('A', 'A'))
+    let releaseWrite: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      releaseWrite = resolve
+    })
+    tab.disk.fs.writeFile.mockImplementationOnce(
+      async ({ filePath, content }: { filePath: string; content: string }) => {
+        tab.disk.files.set(filePath, content)
+        await gate
+        return { ok: true }
+      }
+    )
+    tab.type('X')
+    const slowSave = tab.save()
+    await vi.waitFor(() => expect(tab.disk.fs.writeFile).toHaveBeenCalledTimes(1))
+    // While the reply is in flight, an agent writes B and the user reloads it and edits.
+    tab.disk.files.set(FILE_ID, 'B')
+    tab.store.getState().markFileDirty(FILE_ID, false)
+    tab.showInPane('B', 'B')
+    tab.store.getState().setLastKnownDiskSignature(FILE_ID, getDiskBaselineSignature('B'))
+    releaseWrite()
+    await slowSave
+    tab.type('B edited')
+    await tab.save()
+
+    expect(tab.disk.files.get(FILE_ID)).toBe('B edited')
   })
 
   it('persists a draft with the base its model holds, so a restart cannot adopt a newer one', async () => {
