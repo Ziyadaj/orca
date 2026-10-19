@@ -21,6 +21,11 @@ import {
 // recovery path — without it the tab is silently stale until close/reopen and
 // the next save clobbers the newer disk content unannounced.
 
+function isStillMarkedChanged(fileId: string): boolean {
+  const liveFile = useAppStore.getState().openFiles.find((openFile) => openFile.id === fileId)
+  return liveFile?.externalMutation === 'changed'
+}
+
 export function ExternalFileChangeBanner({
   file,
   currentContent,
@@ -41,15 +46,29 @@ export function ExternalFileChangeBanner({
     const mounted = getMountedEditModel(file, useAppStore.getState())
     if (mounted) {
       // Why: Cmd+Z in the editor brings the edits back, so no confirmation or undo toast.
-      await reloadMountedModelFromDisk(file, mounted).catch((err: unknown) => {
-        toast.error(
-          translate(
-            'auto.components.editor.ExternalFileChangeBanner.reloadFailed',
-            'Could not reload from disk'
-          ),
-          { description: err instanceof Error ? err.message : String(err) }
-        )
-      })
+      const result = await reloadMountedModelFromDisk(file, mounted).catch((err: unknown) => err)
+      if (result === 'applied') {
+        return
+      }
+      if (result === 'superseded') {
+        // Why: only when the banner is still up — a save or Keep during the read already resolved it.
+        if (isStillMarkedChanged(file.id)) {
+          toast(
+            translate(
+              'auto.components.editor.ExternalFileChangeBanner.reloadSuperseded',
+              'Not reloaded: the file or your edits changed while it was reading. Try again.'
+            )
+          )
+        }
+        return
+      }
+      toast.error(
+        translate(
+          'auto.components.editor.ExternalFileChangeBanner.reloadFailed',
+          'Could not reload from disk'
+        ),
+        result instanceof Error ? { description: result.message } : undefined
+      )
       return
     }
     // Why: rich, preview, notebook, CSV and diff views have no undo across a reload — ask first.
@@ -70,11 +89,7 @@ export function ExternalFileChangeBanner({
       confirmVariant: 'destructive',
       ignoresOpeningGesture: true
     })
-    if (
-      confirmed &&
-      useAppStore.getState().openFiles.find((openFile) => openFile.id === file.id)
-        ?.externalMutation === 'changed'
-    ) {
+    if (confirmed && isStillMarkedChanged(file.id)) {
       discardDraftAndReloadContent(file, reloadContent)
     }
   }

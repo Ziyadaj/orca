@@ -19,7 +19,8 @@ vi.mock('./editor-model-owner', () => ({ getEditorModelOwnerKey: () => '' }))
 import { useAppStore } from '@/store'
 import { editorModelRegistry } from '@/lib/editor-model-registry'
 import { getDiskBaselineSignature } from './diff-content-signature'
-import { ORCA_EDITOR_FILE_RELOADED_EVENT } from './editor-autosave'
+import { isAutosaveSuspendedForFile, ORCA_EDITOR_FILE_RELOADED_EVENT } from './editor-autosave'
+import { markFileChangedOnDisk } from './editor-changed-on-disk-mark'
 import { toEditorModelUri } from './editor-model-uri'
 import { isProgrammaticContentSyncInFlight } from './monaco-programmatic-sync'
 import {
@@ -105,7 +106,7 @@ describe('reloadMountedModelFromDisk', () => {
       programmaticDuringEdit.push(isProgrammaticContentSyncInFlight(modelKey))
     )
 
-    await expect(reloadMountedModelFromDisk(file, mounted())).resolves.toBe(true)
+    await expect(reloadMountedModelFromDisk(file, mounted())).resolves.toBe('applied')
     window.removeEventListener(ORCA_EDITOR_FILE_RELOADED_EVENT, onReloaded)
 
     expect(model.getValue()).toBe('disk text')
@@ -135,7 +136,7 @@ describe('reloadMountedModelFromDisk', () => {
     )
     resolveRead('disk text')
 
-    await expect(pending).resolves.toBe(false)
+    await expect(pending).resolves.toBe('superseded')
     expect(model.getValue()).toBe('draft text, more typing')
     expect(clearEditorDraft).not.toHaveBeenCalled()
     expect(setExternalMutation).not.toHaveBeenCalled()
@@ -147,15 +148,75 @@ describe('reloadMountedModelFromDisk', () => {
     openFiles = [{ ...file, isDirty: false, externalMutation: undefined }]
     resolveRead('disk text')
 
-    await expect(pending).resolves.toBe(false)
+    await expect(pending).resolves.toBe('superseded')
     expect(model.getValue()).toBe('draft text')
     expect(setLastKnownDiskSignature).not.toHaveBeenCalled()
+  })
+
+  it('drops the result when disk changed again during the read', async () => {
+    const resolveRead = deferredRead()
+    const pending = reloadMountedModelFromDisk(file, mounted())
+    // Why: the tab is already marked, so this re-mark is the only trace of the newer write.
+    markFileChangedOnDisk({ setExternalMutation }, file, {
+      connectionId: undefined,
+      origin: 'live'
+    })
+    resolveRead('disk text read before the newer write')
+
+    await expect(pending).resolves.toBe('superseded')
+    expect(model.getValue()).toBe('draft text')
+    expect(clearEditorDraft).not.toHaveBeenCalled()
+  })
+
+  it('undoing past the reload restores the conflict and old baseline; redo clears them', async () => {
+    openFiles = [{ ...file, lastKnownDiskSignature: 'pre-reload-signature' }]
+    const patchLiveFile = (patch: Partial<OpenFile>): void => {
+      openFiles = openFiles.map((openFile) => ({ ...openFile, ...patch }))
+    }
+    setExternalMutation.mockImplementation((_id, mutation) =>
+      patchLiveFile({ externalMutation: mutation ?? undefined })
+    )
+    setLastKnownDiskSignature.mockImplementation((_id, signature) =>
+      patchLiveFile({ lastKnownDiskSignature: signature })
+    )
+    const reloadSignature = getDiskBaselineSignature('disk text')
+
+    await expect(reloadMountedModelFromDisk(file, mounted())).resolves.toBe('applied')
+    model.pushEditOperations(
+      [],
+      [{ range: model.getFullModelRange(), text: 'disk text, then typing' }],
+      () => null
+    )
+    await model.undo()
+    expect(openFiles[0]?.externalMutation).toBeUndefined()
+
+    await model.undo()
+    expect(model.getValue()).toBe('draft text')
+    expect(openFiles[0]?.externalMutation).toBe('changed')
+    expect(openFiles[0]?.lastKnownDiskSignature).toBe('pre-reload-signature')
+    expect(isAutosaveSuspendedForFile(openFiles[0]!)).toBe(true)
+
+    await model.redo()
+    expect(model.getValue()).toBe('disk text')
+    expect(openFiles[0]?.externalMutation).toBeUndefined()
+    expect(openFiles[0]?.lastKnownDiskSignature).toBe(reloadSignature)
+  })
+
+  it('stops restoring the conflict once a save re-stamps the baseline', async () => {
+    openFiles = [{ ...file, lastKnownDiskSignature: 'pre-reload-signature' }]
+    await expect(reloadMountedModelFromDisk(file, mounted())).resolves.toBe('applied')
+    openFiles = [{ ...file, externalMutation: undefined, lastKnownDiskSignature: 'saved' }]
+    setExternalMutation.mockClear()
+
+    await model.undo()
+
+    expect(setExternalMutation).not.toHaveBeenCalled()
   })
 
   it('drops a binary disk read', async () => {
     readRuntimeFileContentMock.mockResolvedValue({ content: '', isBinary: true })
 
-    await expect(reloadMountedModelFromDisk(file, mounted())).resolves.toBe(false)
+    await expect(reloadMountedModelFromDisk(file, mounted())).resolves.toBe('unavailable')
     expect(model.getValue()).toBe('draft text')
   })
 })

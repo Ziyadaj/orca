@@ -172,6 +172,15 @@ export function useEditorPanelExternalContentEvents({
       if (!file) {
         return
       }
+      if (event.type === ORCA_EDITOR_FILE_RELOADED_EVENT) {
+        // Why: a read started before the reload must not land after it and restore older text.
+        invalidateContent([
+          file.id,
+          ...openFilesRef.current
+            .filter((openFile) => openFile.markdownPreviewSourceFileId === file.id)
+            .map((openFile) => openFile.id)
+        ])
+      }
       if (file.mode === 'edit' || file.mode === 'markdown-preview') {
         setFileContents((prev) => ({
           ...prev,
@@ -197,7 +206,7 @@ export function useEditorPanelExternalContentEvents({
       window.removeEventListener(ORCA_EDITOR_FILE_SAVED_EVENT, handler)
       window.removeEventListener(ORCA_EDITOR_FILE_RELOADED_EVENT, handler)
     }
-  }, [openFilesRef, setDiffContents, setFileContents])
+  }, [invalidateContent, openFilesRef, setDiffContents, setFileContents])
 }
 
 function updateSavedPreviewTabs(

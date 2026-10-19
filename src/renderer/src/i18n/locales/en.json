@@ -16306,6 +16306,7 @@
           "3fa2b8d417": "Reload from Disk",
           "a95d02c644": "Keep My Edits",
           "reloadFailed": "Could not reload from disk",
+          "reloadSuperseded": "Not reloaded: the file or your edits changed while it was reading. Try again.",
           "discardTitle": "Discard your unsaved edits?",
           "discardDescription": "{{value0}} will be replaced with the version on disk. This view can't undo it.",
           "90b2ce7d43": "Compare"

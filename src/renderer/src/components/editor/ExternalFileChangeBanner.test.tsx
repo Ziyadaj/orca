@@ -94,7 +94,7 @@ describe('ExternalFileChangeBanner', () => {
   it('reloads a mounted editor as an undoable edit, with no confirmation or toast', async () => {
     const mounted = { model: {}, modelKey: 'file:///repo/notes.md' }
     actions.getMountedEditModel.mockReturnValue(mounted)
-    actions.reloadMountedModelFromDisk.mockResolvedValue(true)
+    actions.reloadMountedModelFromDisk.mockResolvedValue('applied')
     const reloadContent = vi.fn()
     renderBanner(reloadContent)
 
@@ -105,6 +105,17 @@ describe('ExternalFileChangeBanner', () => {
     expect(toastMock).not.toHaveBeenCalled()
     expect(reloadContent).not.toHaveBeenCalled()
     expect(actions.discardDraftAndReloadContent).not.toHaveBeenCalled()
+  })
+
+  it('says so when a reload is superseded, so the click does not look ignored', async () => {
+    actions.getMountedEditModel.mockReturnValue({ model: {}, modelKey: 'file:///repo/notes.md' })
+    actions.reloadMountedModelFromDisk.mockResolvedValue('superseded')
+    renderBanner()
+
+    await clickReload()
+
+    expect(toastMock).toHaveBeenCalledTimes(1)
+    expect(toastMock.mock.calls[0]?.[0]).toContain('Not reloaded')
   })
 
   it('asks before discarding the draft on surfaces with no editor undo', async () => {
