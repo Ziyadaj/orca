@@ -91,7 +91,7 @@ test('runs a provider machine through create, connect, sleep, wake and delete', 
     )
     expect(deleted.state).toBe('gone')
     expect(provider.containerFor(machine.id)).toBeNull()
-    // A machine Orca deleted itself holds no target, so the next list drops its row.
+    // Nothing in this profile runs on the deleted machine, so the next list prunes its gone row.
     expect((await machineSnapshot(orcaPage))?.machines).toEqual([])
   } finally {
     provider?.cleanup()
