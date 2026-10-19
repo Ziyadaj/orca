@@ -22,6 +22,7 @@ import {
 } from './editor-model-disk-baseline'
 import { getDiskBaselineSignature } from './diff-content-signature'
 import { keepTabEditsOverExternalChange } from './ExternalFileChangeBanner'
+import { buildEditorSessionData } from '@/lib/workspace-session'
 import type * as RuntimeFileReadClient from '@/runtime/runtime-file-read-client'
 
 const mocks = vi.hoisted(() => {
@@ -355,6 +356,55 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
 
     await tab.save()
     expect(tab.disk.files.get(FILE_ID)).toBe('D2 from source')
+  })
+
+  it('re-bases a source pane that remounted onto a slow rich-editor save once it lands', async () => {
+    const tab = attach(setUp('O', 'O'))
+    let releaseWrite: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      releaseWrite = resolve
+    })
+    tab.disk.fs.writeFile.mockImplementationOnce(
+      async ({ filePath, content }: { filePath: string; content: string }) => {
+        await gate
+        tab.disk.files.set(filePath, content)
+        return { ok: true }
+      }
+    )
+    tab.store.getState().setEditorDraft(FILE_ID, 'D1')
+    noteEditorDraftSource(FILE_ID)
+    tab.store.getState().markFileDirty(FILE_ID, true)
+    const richSave = tab.save()
+    await vi.waitFor(() => expect(tab.disk.fs.writeFile).toHaveBeenCalledTimes(1))
+    // The source pane remounts showing the dirty draft, before the write lands.
+    tab.showInPane('D1', 'O', 'mount')
+    releaseWrite()
+    await richSave
+
+    tab.disk.files.set(FILE_ID, 'agent rewrite')
+    tab.type('D1 typed')
+    await expect(tab.save()).rejects.toThrow()
+    expect(tab.disk.files.get(FILE_ID)).toBe('agent rewrite')
+  })
+
+  it('persists a draft with the base its model holds, so a restart cannot adopt a newer one', async () => {
+    // The store loaded B; a stale split pane remounted A into the shared model, and the user typed.
+    const tab = attach(setUp('B', 'B'))
+    tab.store.getState().setLastKnownDiskSignature(FILE_ID, getDiskBaselineSignature('B'))
+    tab.showInPane('A', 'A', 'mount')
+    tab.type('A edited')
+
+    const state = tab.store.getState()
+    const persisted = buildEditorSessionData(state.openFiles, state.editorDrafts, {}, {}, {})
+      .openFilesByWorktree?.['wt-1']?.[0]
+    expect(persisted?.dirtyDraftContent).toBe('A edited')
+    expect(persisted?.lastKnownDiskSignature).toBe(getDiskBaselineSignature('A'))
+
+    // After a restart the restored draft has no model yet; its save is guarded by what was persisted.
+    __clearEditorModelDiskBaselinesForTests()
+    tab.store.getState().setLastKnownDiskSignature(FILE_ID, persisted?.lastKnownDiskSignature ?? '')
+    await expect(tab.save()).rejects.toThrow()
+    expect(tab.disk.files.get(FILE_ID)).toBe('B')
   })
 
   // Why: Monaco keeps one line ending, so disk text with others enters the model converted.

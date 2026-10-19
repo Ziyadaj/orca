@@ -63,10 +63,10 @@ export function restampEditorModelDiskBaseline(fileId: string, signature: string
 }
 
 /**
- * After a save of text that was not the model's: the model's baseline no longer describes disk,
- * so drop it (unguarded until the next stamp, as before this check existed). Why the generation: a
- * base stamped after the save began (a reload) still describes the model and is kept; a model that
- * holds exactly what was written is re-based to it.
+ * After a save of text that was not the model's. A model holding exactly what was written (a
+ * pane remounted onto that draft) is re-based to it. Otherwise its base no longer describes disk,
+ * so it is dropped, leaving the tab unguarded until the next stamp, as before this check existed;
+ * unless a stamp after the save began (a reload) re-based it, which the generation shows.
  */
 export function settleEditorModelAfterOtherSurfaceSave(
   fileId: string,
@@ -78,13 +78,11 @@ export function settleEditorModelAfterOtherSurfaceSave(
   if (!model || model.isDisposed()) {
     return
   }
-  if (modelGenerations.get(model) === capturedGeneration) {
-    modelBaselines.delete(model)
-    return
-  }
   if (model.getValue() === writtenContent) {
     modelBaselines.set(model, writtenSignature)
     bumpModelGeneration(model)
+  } else if (modelGenerations.get(model) === capturedGeneration) {
+    modelBaselines.delete(model)
   }
 }
 
@@ -155,6 +153,23 @@ export function resolveEditorSaveBaseline(
         modelGeneration: modelGenerations.get(model)
       }
     : { content: model.getValue(), signature, fromModel: true }
+}
+
+/**
+ * The base a persisted draft carries: the one its save compares against. Why not the store's: a
+ * stale split pane can base the model (and so the draft) on an older disk version than the store's.
+ */
+export function persistedDraftDiskBaselineField(
+  fileId: string,
+  draft: string | undefined,
+  storeSignature: string | undefined
+): { lastKnownDiskSignature?: string } {
+  const model = tabModels.get(fileId)
+  const signature =
+    otherSurfaceTabs.has(fileId) || !model || model.isDisposed()
+      ? storeSignature
+      : modelBaselines.get(model)
+  return draft !== undefined && signature ? { lastKnownDiskSignature: signature } : {}
 }
 
 /** What a Monaco editor knows about the disk text behind its tab, read when text enters the model. */
