@@ -10,6 +10,8 @@ import type { PluginWorkerHandle } from './plugin-host-process'
 import { PluginWorkerController } from './plugin-worker-controller'
 import type { PluginWorkerFactory } from './plugin-worker-manager'
 import { PluginLogBuffer } from './plugin-log-buffer'
+import { buildPluginWorkerSpawnSpec } from './plugin-worker-spawn-spec'
+import { hashPluginTree } from './plugin-content-hash'
 
 const roots: string[] = []
 
@@ -206,5 +208,57 @@ describe('PluginWorkerController activation authority', () => {
     )
     expect(startedWorker.dispose).toHaveBeenCalledOnce()
     await subject.dispose()
+  })
+
+  it('restarts a running worker once when its reviewed bytes change', async () => {
+    const current = await plugin()
+    const idle = { ...(await plugin()), pluginKey: 'orca-samples.idle' }
+    const factory = vi.fn<PluginWorkerFactory>(async () => worker(['run']))
+    const subject = controller({ factory, verify: async () => undefined, isApproved: () => true })
+    await subject.ensure(current)
+    await writeFile(join(current.rootDir, 'main.mjs'), 'export default function activate() { 2 }')
+    const reviewed = await hashPluginTree(current.rootDir)
+    const updated = { ...current, consentContentHash: reviewed.ok ? reviewed.hash : null }
+    const discovered = new Map([updated, idle].map((next) => [next.pluginKey, next]))
+    const nextSpecs = new Map(
+      [...discovered.values()].map((next) => [next.pluginKey, buildPluginWorkerSpawnSpec(next, [])])
+    )
+    const resolve = (key: string) => discovered.get(key) ?? null
+
+    await subject.reconcile(nextSpecs, resolve)
+    await vi.waitFor(() => expect(factory).toHaveBeenCalledTimes(2))
+    await subject.reconcile(nextSpecs, resolve)
+    expect(factory).toHaveBeenCalledTimes(2)
+    expect(factory.mock.calls.map(([options]) => options.pluginId)).not.toContain(idle.pluginKey)
+    await subject.dispose()
+  })
+
+  it('does not start an updated worker after dispose overtakes its restart', async () => {
+    const current = await plugin()
+    let finishRestart!: (handle: PluginWorkerHandle) => void
+    const restarted = worker(['run'])
+    const factory = vi
+      .fn<PluginWorkerFactory>()
+      .mockResolvedValueOnce(worker(['run']))
+      .mockImplementationOnce(() => new Promise((resolve) => (finishRestart = resolve)))
+    const subject = controller({ factory, verify: async () => undefined, isApproved: () => true })
+    await subject.ensure(current)
+    await writeFile(join(current.rootDir, 'main.mjs'), 'export default function activate() { 3 }')
+    const reviewed = await hashPluginTree(current.rootDir)
+    const updated = { ...current, consentContentHash: reviewed.ok ? reviewed.hash : null }
+
+    const reconciling = subject.reconcile(
+      new Map([[updated.pluginKey, buildPluginWorkerSpawnSpec(updated, [])]]),
+      () => updated
+    )
+    await vi.waitFor(() => expect(factory).toHaveBeenCalledTimes(2))
+    const disposing = subject.dispose()
+    finishRestart(restarted)
+
+    await reconciling
+    await disposing
+    expect(restarted.dispose).toHaveBeenCalledOnce()
+    await expect(subject.ensure(updated)).rejects.toThrow('shut down')
+    expect(factory).toHaveBeenCalledTimes(2)
   })
 })

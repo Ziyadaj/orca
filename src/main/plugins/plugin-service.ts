@@ -170,7 +170,7 @@ export class PluginService {
     const nextSpecs = collectApprovedWorkerSpecs(next, (plugin) => this.isRuntimeApproved(plugin))
     // Notify before slow shutdown so feature-off unmounts panels immediately.
     this.notifyChanged(true)
-    await this.workerController.reconcile(nextSpecs)
+    await this.workerController.reconcile(nextSpecs, (key) => this.findValidPlugin(key))
     if (this.disposed) {
       return
     }
