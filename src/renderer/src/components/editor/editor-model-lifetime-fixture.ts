@@ -7,6 +7,7 @@ import { createStoreSessionMockApi } from '@/store/slices/store-session-test-har
 import type { OpenFile } from '@/store/slices/editor'
 import { attachClosedEditorTabCleanup } from './closed-editor-tab-controller'
 import { toEditorModelUri } from './editor-model-uri'
+import { localEditorModelOwnerKey } from './editor-model-owner'
 import {
   scrollTopCache,
   editorSelectionCache,
@@ -85,7 +86,10 @@ export function modelLifetimeEditorModel(
   filePath: string,
   content = 'fixture'
 ): monaco.editor.ITextModel {
-  return modelLifetimeTextModel(toEditorModelUri(filePath), content)
+  return modelLifetimeTextModel(
+    toEditorModelUri(filePath, localEditorModelOwnerKey(workspace)),
+    content
+  )
 }
 
 type ModelAttachmentPort = {

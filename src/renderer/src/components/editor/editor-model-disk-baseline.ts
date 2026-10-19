@@ -113,6 +113,7 @@ export function noteOtherSurfaceEdit(fileId: string): void {
 export function forgetEditorTabSaveSource(fileId: string): void {
   otherSurfaceTabs.delete(fileId)
   tabModels.delete(fileId)
+  signedDiskContent.delete(fileId)
 }
 
 /**
@@ -165,10 +166,12 @@ export function persistedDraftDiskBaselineField(
   storeSignature: string | undefined
 ): { lastKnownDiskSignature?: string } {
   const model = tabModels.get(fileId)
+  // Why the store's as fallback: a base dropped after another surface's save still lets a restore
+  // notice an offline write, as before this check existed.
   const signature =
     otherSurfaceTabs.has(fileId) || !model || model.isDisposed()
       ? storeSignature
-      : modelBaselines.get(model)
+      : (modelBaselines.get(model) ?? storeSignature)
   return draft !== undefined && signature ? { lastKnownDiskSignature: signature } : {}
 }
 
@@ -179,6 +182,20 @@ export type EditorDiskBaselineSource = {
   diskContent: string | undefined
   /** The tab's persisted base, for a restored draft whose model is new. */
   restoredDiskSignature: string | undefined
+}
+
+/** Last disk text signed per tab; why: remounts and tab switches re-apply the same text. */
+const signedDiskContent = new Map<string, { content: string; signature: string }>()
+
+function diskContentSignature(fileId: string, content: string): string {
+  const cached = signedDiskContent.get(fileId)
+  if (cached?.content === content) {
+    return cached.signature
+  }
+  // Why written-content: after a save this text came from the editor, not a read, and disk holds its UTF-8 form.
+  const signature = getWrittenContentDiskSignature(content)
+  signedDiskContent.set(fileId, { content, signature })
+  return signature
 }
 
 /**
@@ -197,11 +214,10 @@ export function stampAppliedEditorContent(
     source.diskContent !== undefined &&
     modelText === normalizeToModelEol(source.diskContent, model)
   ) {
-    // Why written-content: after a save this text came from the editor, not a read, and disk holds its UTF-8 form.
     stampEditorModelDiskBaseline(
       source.fileId,
       model,
-      getWrittenContentDiskSignature(source.diskContent)
+      diskContentSignature(source.fileId, source.diskContent)
     )
     return
   }
@@ -221,5 +237,6 @@ export function stampAppliedEditorContent(
 export function __clearEditorModelDiskBaselinesForTests(): void {
   tabModels.clear()
   otherSurfaceTabs.clear()
+  signedDiskContent.clear()
   modelEditReportingFor = null
 }

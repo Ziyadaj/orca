@@ -354,6 +354,15 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
     releaseWrite()
     await richSave
 
+    // The model's base was dropped; a draft saved now still carries the store's version.
+    const state = tab.store.getState()
+    expect(
+      buildEditorSessionData(state.openFiles, state.editorDrafts, {}, {}, {}).openFilesByWorktree?.[
+        'wt-1'
+      ]?.[0]?.lastKnownDiskSignature
+    ).toBe(state.openFiles[0]?.lastKnownDiskSignature)
+    expect(state.openFiles[0]?.lastKnownDiskSignature).toBeDefined()
+
     await tab.save()
     expect(tab.disk.files.get(FILE_ID)).toBe('D2 from source')
   })
@@ -385,6 +394,38 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
     tab.type('D1 typed')
     await expect(tab.save()).rejects.toThrow()
     expect(tab.disk.files.get(FILE_ID)).toBe('agent rewrite')
+  })
+
+  it('keeps a dirty tab in one workspace on its own base while another workspace loads newer disk', async () => {
+    // Each workspace's tab has its own model now, so workspace 2's load re-bases only its own.
+    const tab = attach(setUp('A', 'A'))
+    tab.type('A edited')
+    tab.disk.files.set(FILE_ID, 'B')
+    tab.store.getState().openFile({
+      filePath: FILE_ID,
+      relativePath: 'file.ts',
+      worktreeId: 'wt-2',
+      language: 'typescript',
+      mode: 'edit'
+    })
+    const otherTab = tab.store.getState().openFiles.find((file) => file.worktreeId === 'wt-2')!
+    expect(otherTab.id).not.toBe(FILE_ID)
+    const otherModel = createFakeEditorModel('B')
+    stampAppliedEditorContent(
+      otherModel,
+      otherModel.getValue(),
+      { fileId: otherTab.id, diskContent: 'B', restoredDiskSignature: undefined },
+      'mount'
+    )
+
+    const state = tab.store.getState()
+    expect(
+      buildEditorSessionData(state.openFiles, state.editorDrafts, {}, {}, {}).openFilesByWorktree?.[
+        'wt-1'
+      ]?.[0]?.lastKnownDiskSignature
+    ).toBe(getDiskBaselineSignature('A'))
+    await expect(tab.save()).rejects.toThrow()
+    expect(tab.disk.files.get(FILE_ID)).toBe('B')
   })
 
   it('persists a draft with the base its model holds, so a restart cannot adopt a newer one', async () => {

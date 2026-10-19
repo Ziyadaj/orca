@@ -5,7 +5,7 @@ import type {
   WorktreeOperationRouteState
 } from '@/lib/worktree-operation-route'
 import { folderWorkspaceKey } from '../../../../shared/workspace-scope'
-import { getEditorModelOwnerKey } from './editor-model-owner'
+import { getEditorModelOwnerKey, localEditorModelOwnerKey } from './editor-model-owner'
 
 function file(overrides: Partial<OpenFile> = {}): OpenFile {
   return {
@@ -39,8 +39,10 @@ const localState: WorktreeOperationRouteState = {
 }
 
 describe('editor model ownership', () => {
-  it('shares local physical files across workspace and tab identities', () => {
-    expect(getEditorModelOwnerKey(file(), localState)).toBe('')
+  it('keeps one local file in two workspaces on separate models', () => {
+    expect(getEditorModelOwnerKey(file(), localState)).toBe(
+      localEditorModelOwnerKey('repo::/srv/repo')
+    )
     expect(
       getEditorModelOwnerKey(
         file({
@@ -50,7 +52,7 @@ describe('editor model ownership', () => {
         }),
         {}
       )
-    ).toBe('')
+    ).toBe(localEditorModelOwnerKey('other'))
   })
 
   it('keeps captured ownership when the focused host changes', () => {
@@ -68,7 +70,7 @@ describe('editor model ownership', () => {
         activeWorkspaceExecutionHostId: 'runtime:hub-b'
       })
     ).toBe(key)
-    expect(key).toBe('["hub-a","ssh:target"]')
+    expect(key).toBe('["hub-a","ssh:target","repo::/srv/repo"]')
   })
 
   it('keeps distinct paired transports to the same target separate', () => {
@@ -91,10 +93,10 @@ describe('editor model ownership', () => {
 
   it('uses the tab runtime hint when no owner catalog is present', () => {
     expect(getEditorModelOwnerKey(file({ runtimeEnvironmentId: 'hub-a' }), {})).toBe(
-      '["hub-a","runtime:hub-a"]'
+      '["hub-a","runtime:hub-a","repo::/srv/repo"]'
     )
     expect(getEditorModelOwnerKey(file({ runtimeEnvironmentId: 'hub-b' }), {})).toBe(
-      '["hub-b","runtime:hub-b"]'
+      '["hub-b","runtime:hub-b","repo::/srv/repo"]'
     )
   })
 
@@ -112,7 +114,7 @@ describe('editor model ownership', () => {
         ]
       }
     }
-    expect(getEditorModelOwnerKey(opened, state)).toBe('[null,"ssh:target"]')
+    expect(getEditorModelOwnerKey(opened, state)).toBe('[null,"ssh:target","repo::/srv/repo"]')
   })
 
   it('does not adopt a new active host for a legacy local tab', () => {
@@ -123,11 +125,11 @@ describe('editor model ownership', () => {
         activeWorktreeId: opened.worktreeId,
         activeWorkspaceExecutionHostId: 'ssh:new-target'
       })
-    ).toBe('')
+    ).toBe(localEditorModelOwnerKey(opened.worktreeId))
   })
 
   it('keeps unresolved owners separate from local files', () => {
-    expect(getEditorModelOwnerKey(file(), {})).not.toBe('')
+    expect(getEditorModelOwnerKey(file(), {})).not.toBe(localEditorModelOwnerKey(file().worktreeId))
     expect(getEditorModelOwnerKey(file(), {})).not.toBe(
       getEditorModelOwnerKey(file({ worktreeId: 'another-owner' }), {})
     )
@@ -139,13 +141,13 @@ describe('editor model ownership', () => {
       getEditorModelOwnerKey(opened, {
         folderWorkspaces: [{ id: 'folder', projectGroupId: 'group', executionHostId: 'local' }]
       })
-    ).toBe('')
+    ).toBe(localEditorModelOwnerKey(opened.worktreeId))
     expect(
       getEditorModelOwnerKey(opened, {
         folderWorkspaces: [
           { id: 'folder', projectGroupId: 'group', executionHostId: 'runtime:hub-a' }
         ]
       })
-    ).toBe('["hub-a","runtime:hub-a"]')
+    ).toBe(JSON.stringify(['hub-a', 'runtime:hub-a', opened.worktreeId]))
   })
 })

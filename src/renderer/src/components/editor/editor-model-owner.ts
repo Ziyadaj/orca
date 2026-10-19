@@ -5,6 +5,11 @@ import {
 } from '@/lib/worktree-operation-route'
 import { toRuntimeExecutionHostId, toSshExecutionHostId } from '../../../../shared/execution-host'
 
+/** The owner key of a local workspace's edit-tab model. */
+export function localEditorModelOwnerKey(worktreeId: string): string {
+  return JSON.stringify([null, 'local', worktreeId])
+}
+
 export function getEditorModelOwnerKey(file: OpenFile, state: WorktreeOperationRouteState): string {
   const captured = file.operationProvenance?.generation.route
   const route =
@@ -29,11 +34,12 @@ export function getEditorModelOwnerKey(file: OpenFile, state: WorktreeOperationR
         : environmentId
           ? toRuntimeExecutionHostId(environmentId)
           : null
-  if (hostId === 'local' && !environmentId) {
-    return ''
-  }
-  // Unresolved owners must not borrow another host's retained text.
+  // Why the workspace: each workspace's tab owns its own draft and unsaved state, so its model (text,
+  // undo, and the disk version a save is checked against) must be its own; split panes of one tab
+  // still share it. Unresolved owners must not borrow another host's retained text.
   return JSON.stringify(
-    hostId ? [environmentId, hostId] : [environmentId, 'unresolved', file.worktreeId, file.id]
+    hostId
+      ? [environmentId, hostId, file.worktreeId]
+      : [environmentId, 'unresolved', file.worktreeId, file.id]
   )
 }

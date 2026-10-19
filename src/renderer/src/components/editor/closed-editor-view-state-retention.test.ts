@@ -6,6 +6,7 @@ import type { OpenFile } from '@/store/slices/editor'
 import { createEditorModelRegistry } from '@/lib/editor-model-registry'
 import { attachClosedEditorTabCleanup } from '@/components/editor/closed-editor-tab-controller'
 import { toEditorModelUri } from '@/components/editor/editor-model-uri'
+import { localEditorModelOwnerKey } from '@/components/editor/editor-model-owner'
 import {
   scrollTopCache,
   editorSelectionCache,
@@ -40,7 +41,7 @@ function open(path: string, text = 'original') {
   const model = monaco.editor.createModel(
     text,
     'plaintext',
-    monaco.Uri.parse(toEditorModelUri(path))
+    monaco.Uri.parse(toEditorModelUri(path, localEditorModelOwnerKey('fixture')))
   )
   const store = createStore(() => ({
     openFiles: [file],
@@ -106,7 +107,7 @@ it('measures the existing Monaco large-file undo retention limit', async () => {
   const reopened = monaco.editor.createModel(
     content,
     'plaintext',
-    monaco.Uri.parse(toEditorModelUri(path))
+    monaco.Uri.parse(toEditorModelUri(path, localEditorModelOwnerKey('fixture')))
   )
   expect(reopened.canUndo()).toBe(false)
 })
@@ -131,7 +132,7 @@ it.each([
   const reopened = monaco.editor.createModel(
     content,
     'plaintext',
-    monaco.Uri.parse(toEditorModelUri(path))
+    monaco.Uri.parse(toEditorModelUri(path, localEditorModelOwnerKey('fixture')))
   )
   expect(reopened.canUndo()).toBe(true)
   await reopened.undo()
