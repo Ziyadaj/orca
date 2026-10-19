@@ -2,7 +2,10 @@ import type { editor } from 'monaco-editor'
 
 export type MonacoContentSyncMode = 'undoable' | 'read-only-live-tail'
 
-function normalizeToModelEol(content: string, model: editor.ITextModel): string {
+export function normalizeToModelEol(
+  content: string,
+  model: Pick<editor.ITextModel, 'getEOL'>
+): string {
   const eol = model.getEOL()
   // Why: Monaco normalizes model line endings, while filesystem content keeps
   // its raw EOLs. Compare the representation Monaco can actually retain.

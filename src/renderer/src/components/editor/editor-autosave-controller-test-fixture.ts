@@ -141,6 +141,7 @@ export function createUntitledNoteStore(fileName: string): StoreApi<AppState> {
 
 export type FakeEditorModel = {
   getValue: () => string
+  getEOL: () => string
   isDisposed: () => boolean
   onWillDispose: (listener: () => void) => { dispose: () => void }
   setText: (text: string) => void
@@ -148,19 +149,22 @@ export type FakeEditorModel = {
 }
 
 /** Stands in for a tab's shared Monaco model: holds text and can be disposed. */
-export function createFakeEditorModel(text: string): FakeEditorModel {
-  let current = text
+/** `eol` mimics Monaco's single line ending; text set on the model is converted to it. */
+export function createFakeEditorModel(text: string, eol: '\n' | '\r\n' = '\n'): FakeEditorModel {
+  const toModelEol = (value: string): string => value.replace(/\r\n|\r|\n/g, eol)
+  let current = toModelEol(text)
   let disposed = false
   const disposeListeners: (() => void)[] = []
   return {
     getValue: () => current,
+    getEOL: () => eol,
     isDisposed: () => disposed,
     onWillDispose: (listener) => {
       disposeListeners.push(listener)
       return { dispose: () => undefined }
     },
     setText: (next) => {
-      current = next
+      current = toModelEol(next)
     },
     dispose: () => {
       disposed = true

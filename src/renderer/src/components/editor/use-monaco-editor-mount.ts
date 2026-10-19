@@ -121,7 +121,7 @@ export function useMonacoEditorMount(params: MonacoEditorMountParams): OnMount {
         }
         const model = editorInstance.getModel()
         if (model) {
-          stampAppliedEditorContent(model, contentRef.current, diskBaselineRef.current, 'mount')
+          stampAppliedEditorContent(model, model.getValue(), diskBaselineRef.current, 'mount')
         }
       } finally {
         isApplyingProgrammaticContentRef.current = false

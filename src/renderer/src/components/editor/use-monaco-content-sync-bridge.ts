@@ -53,6 +53,7 @@ export function useMonacoContentSyncBridge(params: {
   const isApplyingProgrammaticContentRef = useRef(false)
   const isApplyingLargePasteRef = useRef(false)
   const previousContentRef = useRef<string | null>(null)
+  const previousDiskContentRef = useRef<string | undefined | null>(null)
 
   const handleChange = useCallback(
     (value: string | undefined) => {
@@ -91,6 +92,9 @@ export function useMonacoContentSyncBridge(params: {
     // model, and a chunked paste in flight owns the model until it reports.
     const contentChanged = previousContentRef.current !== content
     previousContentRef.current = content
+    const diskChanged = previousDiskContentRef.current !== diskContent
+    previousDiskContentRef.current = diskContent
+    let pushed = false
     if (
       contentChanged &&
       !isApplyingLargePasteRef.current &&
@@ -101,14 +105,18 @@ export function useMonacoContentSyncBridge(params: {
       try {
         syncContentUpdate(ed, content, contentSyncModeRef.current)
         lastSyncedContentRef.current = content
+        pushed = true
       } finally {
         isApplyingProgrammaticContentRef.current = false
         endProgrammaticContentSync(modelKey)
       }
     }
     // Why the model's own text: a reload can land text the model already holds, and a push skipped
-    // mid paste must not stamp a base for text the model doesn't hold.
-    stampAppliedEditorContent(model, model.getValue(), diskBaselineRef.current, 'sync')
+    // mid paste must not stamp a base for text the model doesn't hold. Why only on a push or a disk
+    // change: echoes of the user's own typing can't make the model match new disk text.
+    if (pushed || diskChanged) {
+      stampAppliedEditorContent(model, model.getValue(), diskBaselineRef.current, 'sync')
+    }
   }, [content, contentSyncModeRef, diskBaselineRef, diskContent, editorRef, modelKey])
 
   return {

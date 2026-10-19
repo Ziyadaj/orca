@@ -1,8 +1,10 @@
 import { getWrittenContentDiskSignature } from '../../../../shared/disk-baseline-signature'
+import { normalizeToModelEol } from './monaco-content-sync'
 
 /** The parts of a Monaco text model this needs. */
 type DiskBaselineModel = {
   getValue(): string
+  getEOL(): string
   isDisposed(): boolean
   onWillDispose(listener: () => void): unknown
 }
@@ -13,7 +15,7 @@ type DiskBaselineModel = {
  * was edited from live in one place and change together. Tabs only point at their model.
  */
 const modelBaselines = new WeakMap<DiskBaselineModel, string>()
-/** Bumped by every stamp and every Monaco edit, so a late save can tell the model moved on. */
+/** Bumped by every stamp, so a late save can tell whether the model was re-based since it began. */
 const modelGenerations = new WeakMap<DiskBaselineModel, number>()
 
 function bumpModelGeneration(model: DiskBaselineModel): void {
@@ -61,9 +63,10 @@ export function restampEditorModelDiskBaseline(fileId: string, signature: string
 }
 
 /**
- * After a save of text that was not the model's: the model's baseline no longer describes disk.
- * Why the generation: a save captured before the user returned to the model and edited it must not
- * erase the base those newer edits rely on; it re-bases only a model that holds exactly what was written.
+ * After a save of text that was not the model's: the model's baseline no longer describes disk,
+ * so drop it (unguarded until the next stamp, as before this check existed). Why the generation: a
+ * base stamped after the save began (a reload) still describes the model and is kept; a model that
+ * holds exactly what was written is re-based to it.
  */
 export function settleEditorModelAfterOtherSurfaceSave(
   fileId: string,
@@ -87,10 +90,6 @@ export function settleEditorModelAfterOtherSurfaceSave(
 
 /** Monaco reports its own edits through this, so the tab's draft is known to be the model's text. */
 export function reportEditorModelEdit(fileId: string, report: () => void): void {
-  const model = tabModels.get(fileId)
-  if (model) {
-    bumpModelGeneration(model)
-  }
   modelEditReportingFor = fileId
   try {
     report()
@@ -168,21 +167,26 @@ export type EditorDiskBaselineSource = {
 }
 
 /**
- * Called in the same step that `appliedContent` enters the model, so a baseline is only ever
- * stamped together with the text the model actually holds.
+ * Called in the same step that text enters the model, with the model's own text, so a baseline is
+ * only ever stamped together with the text the model actually holds.
  */
 export function stampAppliedEditorContent(
   model: DiskBaselineModel,
-  appliedContent: string,
+  modelText: string,
   source: EditorDiskBaselineSource,
   phase: 'mount' | 'sync'
 ): void {
-  if (source.diskContent !== undefined && appliedContent === source.diskContent) {
+  // Why normalized: the model keeps one line ending, so disk text with others enters it converted;
+  // the signature stays the raw disk text's, which is what the writer compares against.
+  if (
+    source.diskContent !== undefined &&
+    modelText === normalizeToModelEol(source.diskContent, model)
+  ) {
     // Why written-content: after a save this text came from the editor, not a read, and disk holds its UTF-8 form.
     stampEditorModelDiskBaseline(
       source.fileId,
       model,
-      getWrittenContentDiskSignature(appliedContent)
+      getWrittenContentDiskSignature(source.diskContent)
     )
     return
   }

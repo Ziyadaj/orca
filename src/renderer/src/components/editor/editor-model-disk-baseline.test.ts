@@ -50,7 +50,7 @@ type Harness = {
   save: () => Promise<void>
 }
 
-function setUp(disk: string, opened: string): Harness {
+function setUp(disk: string, opened: string, eol: '\n' | '\r\n' = '\n'): Harness {
   const fakeDisk = stubEditorWindowWithDisk(createFakeEditorDisk({ [FILE_ID]: disk }))
   const store = createEditorStore()
   mocks.store.current = store
@@ -62,10 +62,10 @@ function setUp(disk: string, opened: string): Harness {
     language: 'typescript',
     mode: 'edit'
   })
-  const model = createFakeEditorModel(opened)
+  const model = createFakeEditorModel(opened, eol)
   stampAppliedEditorContent(
     model,
-    opened,
+    model.getValue(),
     { fileId: FILE_ID, diskContent: opened, restoredDiskSignature: undefined },
     'mount'
   )
@@ -77,7 +77,7 @@ function setUp(disk: string, opened: string): Harness {
       model.setText(paneText)
       stampAppliedEditorContent(
         model,
-        paneText,
+        model.getValue(),
         { fileId: FILE_ID, diskContent, restoredDiskSignature: undefined },
         phase
       )
@@ -177,7 +177,7 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
     ['a byte-order mark', '﻿header', '﻿header edited'],
     ['a stray half of an emoji pair', 'x', 'x \uD800']
   ])('saves twice over %s without a false refusal', async (_label, start, edited) => {
-    const tab = attach(setUp(start, start))
+    const tab = attach(setUp(start, start, start.includes('\r\n') ? '\r\n' : '\n'))
     tab.type(edited)
     await tab.save()
     tab.type(`${edited} again`)
@@ -353,7 +353,22 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
     releaseWrite()
     await richSave
 
-    await expect(tab.save()).rejects.toThrow()
-    expect(tab.disk.files.get(FILE_ID)).toBe('D1')
+    await tab.save()
+    expect(tab.disk.files.get(FILE_ID)).toBe('D2 from source')
+  })
+
+  // Why: Monaco keeps one line ending, so disk text with others enters the model converted.
+  it.each([
+    ['a CRLF model over LF disk', 'a\nb', '\r\n' as const],
+    ['an LF model over CRLF disk', 'a\r\nb', '\n' as const],
+    ['a CRLF model over mixed line endings', 'a\r\nb\nc', '\r\n' as const]
+  ])('re-bases %s when a reload enters the model', async (_label, reloaded, eol) => {
+    const tab = attach(setUp('O', 'O', eol))
+    tab.disk.files.set(FILE_ID, reloaded)
+    tab.showInPane(reloaded, reloaded)
+    tab.type(`${tab.model.getValue()} edited`)
+    await tab.save()
+
+    expect(tab.disk.files.get(FILE_ID)).toBe(`${tab.model.getValue()}`)
   })
 })
