@@ -42,6 +42,7 @@ import { registerGitRepositoryRegistrationBinaryCompatibilityCase } from './git-
 import { registerGitLocalBaseBranchBinaryCompatibilityCase } from './git-local-base-branch-binary-compatibility.test-cases'
 import { registerGitResolutionBinaryCompatibilityCases } from './git-resolution-binary-compatibility.test-cases'
 import { registerGitWorktreeBinaryCompatibilityCases } from './git-worktree-binary-compatibility.test-cases'
+import { registerPluginGitDownloadBinaryCompatibilityCase } from './plugin-git-download-binary-compatibility.test-cases'
 
 const image = process.env.ORCA_GIT_COMPAT_IMAGE
 const binary = process.env.ORCA_GIT_COMPAT_BINARY
@@ -665,6 +666,7 @@ describeBinaryCompatibility('real Git binary compatibility', () => {
   })
 
   registerGitLocalBaseBranchBinaryCompatibilityCase(runGit, () => repoPath, Boolean(image))
+  registerPluginGitDownloadBinaryCompatibilityCase(runGit, () => repoPath)
   registerGitResolutionBinaryCompatibilityCases(runGit, (name) =>
     image ? `/repo/${name}.git` : join(repoPath, `${name}.git`)
   )
