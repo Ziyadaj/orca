@@ -47,7 +47,8 @@ export function ExternalFileChangeCompareDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
   onReload: () => void
-  onKeepEdits: () => void
+  /** Receives the disk text the dialog showed, so only that version is adopted. */
+  onKeepEdits: (seenDiskContent?: string) => void
 }): React.JSX.Element {
   const [diskState, setDiskState] = useState<DiskReadState>({ kind: 'loading' })
   const access = editorTabFileAccess(useAppStore.getState(), file)
@@ -200,7 +201,7 @@ export function ExternalFileChangeCompareDialog({
             variant="ghost"
             onClick={() => {
               onOpenChange(false)
-              onKeepEdits()
+              onKeepEdits(diskState.kind === 'ready' ? diskState.content : undefined)
             }}
           >
             {translate(

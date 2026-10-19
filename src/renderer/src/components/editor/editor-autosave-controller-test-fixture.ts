@@ -6,6 +6,11 @@ import { createStore, type StoreApi } from 'zustand/vanilla'
 import { createEditorSlice } from '@/store/slices/editor'
 import type { AppState } from '@/store'
 import { makeWorktree } from '@/store/slices/worktrees-slice-test-fixtures'
+import {
+  compareDiskWritePrecondition,
+  type FileWriteDiskPrecondition,
+  type FileWriteResult
+} from '../../../../shared/file-write-disk-precondition'
 
 export type FakeEditorDisk = {
   files: Map<string, string>
@@ -22,9 +27,28 @@ export function createFakeEditorDisk(initialFiles: Record<string, string> = {}):
   return {
     files,
     fs: {
-      writeFile: vi.fn(async ({ filePath, content }: { filePath: string; content: string }) => {
-        files.set(filePath, content)
-      }),
+      writeFile: vi.fn(
+        async ({
+          filePath,
+          content,
+          diskPrecondition
+        }: {
+          filePath: string
+          content: string
+          diskPrecondition?: FileWriteDiskPrecondition
+        }): Promise<FileWriteResult> => {
+          // Why: mirrors main's writer, which refuses when disk drifted from the tab's baseline.
+          const diskConflict = diskPrecondition
+            ? compareDiskWritePrecondition(diskPrecondition, files.get(filePath) ?? null)
+            : null
+          if (diskConflict) {
+            return { ok: false, diskConflict }
+          }
+          // Why: a UTF-8 write stores each lone surrogate as U+FFFD, as main's does.
+          files.set(filePath, Buffer.from(content, 'utf8').toString('utf8'))
+          return { ok: true }
+        }
+      ),
       deletePath: vi.fn(async ({ targetPath }: { targetPath: string }) => {
         files.delete(targetPath)
       }),
@@ -113,4 +137,36 @@ export function createUntitledNoteStore(fileName: string): StoreApi<AppState> {
     isUntitled: true
   })
   return store
+}
+
+export type FakeEditorModel = {
+  getValue: () => string
+  isDisposed: () => boolean
+  onWillDispose: (listener: () => void) => { dispose: () => void }
+  setText: (text: string) => void
+  dispose: () => void
+}
+
+/** Stands in for a tab's shared Monaco model: holds text and can be disposed. */
+export function createFakeEditorModel(text: string): FakeEditorModel {
+  let current = text
+  let disposed = false
+  const disposeListeners: (() => void)[] = []
+  return {
+    getValue: () => current,
+    isDisposed: () => disposed,
+    onWillDispose: (listener) => {
+      disposeListeners.push(listener)
+      return { dispose: () => undefined }
+    },
+    setText: (next) => {
+      current = next
+    },
+    dispose: () => {
+      disposed = true
+      for (const listener of disposeListeners) {
+        listener()
+      }
+    }
+  }
 }

@@ -10,6 +10,7 @@ import {
 import type { MonacoModelRegistry, DisposableMonacoModel } from './diff-monaco-model-disposal'
 import { toEditorModelUri } from './editor-model-uri'
 import { getEditorModelOwnerKey } from './editor-model-owner'
+import { forgetEditorTabSaveSource } from './editor-model-disk-baseline'
 import type { WorktreeOperationRouteState } from '@/lib/worktree-operation-route'
 
 type EditorStore = Pick<
@@ -245,6 +246,9 @@ export function attachClosedEditorTabCleanup(
           modelOwnerKey: priorOwner
         }
         pendingFiles.set(ownerKey(descriptor), descriptor)
+        if (!liveFile) {
+          forgetEditorTabSaveSource(file.id)
+        }
         removed = true
         if (file.mode === 'edit' && registry) {
           const model = registry.editor.getModel(

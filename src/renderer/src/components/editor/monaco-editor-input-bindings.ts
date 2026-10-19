@@ -26,6 +26,8 @@ type MonacoEditorInputBindingsParams = {
   readOnlyRef: MutableRefObject<boolean>
   lastSyncedContentRef: MutableRefObject<string>
   isApplyingLargePasteRef: MutableRefObject<boolean>
+  /** Marks a content report as coming from this editor's model (see reportEditorModelEdit). */
+  reportModelEdit: (report: () => void) => void
   commentPopoverRef: MutableRefObject<MarkdownCommentPopoverState | null>
   shouldShowMarkdownAnnotationsRef: MutableRefObject<boolean>
   setCommentPopover: Dispatch<SetStateAction<MarkdownCommentPopoverState | null>>
@@ -46,6 +48,7 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
     readOnlyRef,
     lastSyncedContentRef,
     isApplyingLargePasteRef,
+    reportModelEdit,
     commentPopoverRef,
     shouldShowMarkdownAnnotationsRef,
     setCommentPopover,
@@ -113,7 +116,7 @@ export function installMonacoEditorInputBindings(params: MonacoEditorInputBindin
         if (result.status === 'pasted' || result.status === 'cancelled') {
           const value = editorInstance.getValue()
           lastSyncedContentRef.current = value
-          propsRef.current.onContentChange(value)
+          reportModelEdit(() => propsRef.current.onContentChange(value))
         }
         if (result.status === 'rejected' && result.reason === 'too-large') {
           toast.error(

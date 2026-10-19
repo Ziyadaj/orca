@@ -98,10 +98,16 @@ async function expectUserNamedAt(filePath: string): Promise<void> {
   expect(editorTabFileAccess(state, restored)).toEqual({ kind: 'user-file' })
 
   mocks.writeRuntimeFile.mockClear()
+  // A clean tab has nothing of its own to save, so give it an edit.
+  state.setEditorDraft(tab.id, 'edited')
+  state.markFileDirty(tab.id, true)
   await createEditorSaveQueue(useAppStore).queueSave(tab, 'edited', 'user')
-  expect(mocks.writeRuntimeFile).toHaveBeenCalledWith(expect.anything(), filePath, 'edited', {
-    kind: 'user-file'
-  })
+  expect(mocks.writeRuntimeFile).toHaveBeenCalledTimes(1)
+  expect(mocks.writeRuntimeFile.mock.calls[0]?.slice(1, 4)).toEqual([
+    filePath,
+    'edited',
+    { kind: 'user-file' }
+  ])
 }
 
 async function renameTab(newName: string, worktreePath: string): Promise<void> {
@@ -125,7 +131,7 @@ beforeEach(() => {
   useAppStore.setState({ repos: [repo], worktreesByRepo: { 'repo-local': [worktree] } })
   clearFileExplorerUndoHistory()
   mocks.renameRuntimePath.mockReset().mockResolvedValue(undefined)
-  mocks.writeRuntimeFile.mockReset().mockResolvedValue(undefined)
+  mocks.writeRuntimeFile.mockReset().mockResolvedValue({ ok: true })
   vi.stubGlobal('window', {
     setTimeout,
     clearTimeout,

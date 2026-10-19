@@ -27,7 +27,13 @@ export function useEditorPanelSave({
         requestRenameForFile(saveTargetFile.id)
         return false
       }
-      return attemptEditorFileSave({ fileId: saveTargetFile.id, fallbackContent: content })
+      return attemptEditorFileSave({
+        fileId: saveTargetFile.id,
+        fallbackContent: content,
+        // Why: only the editor showing the changed-on-disk banner can give overwrite consent; a
+        // preview tab saving its source shows no banner, so that save stays guarded.
+        ...(saveTargetFile.id === file.id ? { confirmDiskOverwrite: true as const } : {})
+      })
     },
     [openFiles, requestRenameForFile]
   )

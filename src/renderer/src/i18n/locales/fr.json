@@ -16173,6 +16173,10 @@
               "notice": {
                 "8c59ce5075": "Échec de l'enregistrement du fichier. Veuillez réessayer."
               }
+            },
+            "refused": {
+              "changedOnDisk": "Ce fichier a été modifié sur le disque. Vérifiez la modification avant d'enregistrer.",
+              "deletedOnDisk": "Ce fichier a été supprimé du disque."
             }
           }
         },

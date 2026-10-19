@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import type { FileWriteResult } from '../../../../shared/file-write-disk-precondition'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as RuntimeFileMutationClient from '@/runtime/runtime-file-mutation-client'
@@ -19,10 +20,10 @@ const SOURCE = 'repo-a::/repo-a'
 const TARGET = 'repo-b::/repo-b'
 const FILE_PATH = '/repo-b/file.md'
 
-function deferred(): { promise: Promise<void>; resolve: () => void } {
+function deferred(): { promise: Promise<FileWriteResult>; resolve: () => void } {
   let resolve!: () => void
-  const promise = new Promise<void>((done) => {
-    resolve = done
+  const promise = new Promise<FileWriteResult>((done) => {
+    resolve = () => done({ ok: true })
   })
   return { promise, resolve }
 }
@@ -77,7 +78,7 @@ describe('restored editor owner save lifecycle', () => {
   it('drains the old save before reparent, then routes explicit save and autosave to the destination', async () => {
     const oldId = seed()
     const firstWrite = deferred()
-    mocks.writeRuntimeFile.mockReturnValueOnce(firstWrite.promise).mockResolvedValue(undefined)
+    mocks.writeRuntimeFile.mockReturnValueOnce(firstWrite.promise).mockResolvedValue({ ok: true })
     detach = attachEditorAutosaveController(useAppStore)
     useAppStore.getState().setEditorDraft(oldId, 'source save')
     useAppStore.getState().markFileDirty(oldId, true)

@@ -38,12 +38,20 @@ export type EditorSaveQuiesceDetail = EditorSaveQuiesceTarget & {
 export type EditorSaveFileTarget = {
   fileId: string
   fallbackContent?: string
+  /** Set only by the editor's own save action, the one the changed-on-disk banner warns. */
+  confirmDiskOverwrite?: true
 }
 
 export type EditorSaveFileDetail = EditorSaveFileTarget & {
   claim: () => void
   resolve: () => void
   reject: (message: string) => void
+}
+
+export type EditorSaveAndCloseDetail = {
+  fileId: string
+  /** Called with the reason when the save fails, so the dialog doesn't wait out its timeout. */
+  onSaveFailed?: (message: string) => void
 }
 
 export type EditorFileSavedDetail = {

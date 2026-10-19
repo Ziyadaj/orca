@@ -4,6 +4,7 @@ import { useAppStore } from '@/store'
 import { registerFileSearchSelectedTextProvider } from '@/lib/file-search-selection'
 import { syncContentOnMount } from './monaco-content-sync'
 import { toEditorModelUri } from './editor-model-uri'
+import { reportEditorModelEdit, stampAppliedEditorContent } from './editor-model-disk-baseline'
 import {
   beginProgrammaticContentSync,
   endProgrammaticContentSync
@@ -48,7 +49,8 @@ export function useMonacoEditorMount(params: MonacoEditorMountParams): OnMount {
       lastSyncedContentRef,
       contentSyncModeRef,
       isApplyingProgrammaticContentRef,
-      isApplyingLargePasteRef
+      isApplyingLargePasteRef,
+      diskBaselineRef
     },
     decorations: {
       markdownDocLinkDecorationsRef,
@@ -117,6 +119,10 @@ export function useMonacoEditorMount(params: MonacoEditorMountParams): OnMount {
         if (didSyncOnMount) {
           lastSyncedContentRef.current = contentRef.current
         }
+        const model = editorInstance.getModel()
+        if (model) {
+          stampAppliedEditorContent(model, contentRef.current, diskBaselineRef.current, 'mount')
+        }
       } finally {
         isApplyingProgrammaticContentRef.current = false
         endProgrammaticContentSync(modelKey)
@@ -145,6 +151,7 @@ export function useMonacoEditorMount(params: MonacoEditorMountParams): OnMount {
         readOnlyRef,
         lastSyncedContentRef,
         isApplyingLargePasteRef,
+        reportModelEdit: (report) => reportEditorModelEdit(diskBaselineRef.current.fileId, report),
         commentPopoverRef,
         shouldShowMarkdownAnnotationsRef,
         setCommentPopover,
@@ -270,6 +277,7 @@ export function useMonacoEditorMount(params: MonacoEditorMountParams): OnMount {
       contentSyncModeRef,
       isApplyingProgrammaticContentRef,
       isApplyingLargePasteRef,
+      diskBaselineRef,
       markdownDocLinkDecorationsRef,
       conflictDecorationsRef,
       commentPopoverRef,

@@ -77,7 +77,10 @@ it('keeps a retained cursor listener on the current file ID after same-path owne
       lastSyncedContentRef: { current: '' },
       contentSyncModeRef: { current: 'undoable' },
       isApplyingProgrammaticContentRef: { current: false },
-      isApplyingLargePasteRef: { current: false }
+      isApplyingLargePasteRef: { current: false },
+      diskBaselineRef: {
+        current: { fileId: 'file', diskContent: undefined, restoredDiskSignature: undefined }
+      }
     },
     decorations: {
       markdownDocLinkDecorationsRef: { current: null },

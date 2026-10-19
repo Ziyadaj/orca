@@ -16074,6 +16074,10 @@
               "notice": {
                 "8c59ce5075": "Failed to save the file. Please try again."
               }
+            },
+            "refused": {
+              "changedOnDisk": "This file changed on disk. Review the change before saving.",
+              "deletedOnDisk": "This file was deleted on disk."
             }
           }
         },

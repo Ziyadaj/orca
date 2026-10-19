@@ -11,6 +11,7 @@ import { translate } from '@/i18n/i18n'
 import type { OpenFile } from '@/store/slices/editor'
 import { ExternalFileChangeCompareDialog } from './ExternalFileChangeCompareDialog'
 import { getDiskBaselineSignature } from './diff-content-signature'
+import { restampEditorModelDiskBaseline } from './editor-model-disk-baseline'
 import { trackExternalChangeConflictAction } from './editor-external-change-telemetry'
 
 // Why: when an external process (usually an agent) rewrites a file while the
@@ -71,6 +72,7 @@ export function reloadTabContentFromDisk(
             // restoring the pre-reload signature with the draft keeps the
             // restart scan re-deriving the conflict the undo just brought back.
             current.setLastKnownDiskSignature(file.id, discardedDiskSignature)
+            restampEditorModelDiskBaseline(file.id, discardedDiskSignature)
           }
           trackExternalChangeConflictAction(file, 'undo_reload')
         }
@@ -79,9 +81,21 @@ export function reloadTabContentFromDisk(
   )
 }
 
-export function keepTabEditsOverExternalChange(file: OpenFile): void {
+/** The tab's edits are now based on this disk version, in the store record and the editor model. */
+function adoptDiskBaseline(fileId: string, signature: string): void {
+  useAppStore.getState().setLastKnownDiskSignature(fileId, signature)
+  restampEditorModelDiskBaseline(fileId, signature)
+}
+
+/** `seenDiskContent`: the disk text the compare dialog showed, when Keep was chosen there. */
+export function keepTabEditsOverExternalChange(file: OpenFile, seenDiskContent?: string): void {
   const state = useAppStore.getState()
   state.setExternalMutation(file.id, null)
+  if (seenDiskContent !== undefined) {
+    // Why: adopt only the version the user compared against; a later write makes the next save refuse.
+    adoptDiskBaseline(file.id, getDiskBaselineSignature(seenDiskContent))
+    return
+  }
   // Why: the dismissal must survive restart — without advancing the baseline
   // to the current disk content, the restored-tab conflict scan re-derives
   // the dismissed conflict from the stale signature on every launch.
@@ -111,7 +125,7 @@ export function keepTabEditsOverExternalChange(file: OpenFile): void {
       if (!liveFile || liveFile.externalMutation === 'changed') {
         return
       }
-      current.setLastKnownDiskSignature(file.id, getDiskBaselineSignature(result.content))
+      adoptDiskBaseline(file.id, getDiskBaselineSignature(result.content))
     })
     .catch(() => undefined)
 }
@@ -134,9 +148,9 @@ export function ExternalFileChangeBanner({
     trackExternalChangeConflictAction(file, 'reload')
     reloadTabContentFromDisk(file, reloadContent)
   }
-  const handleKeepEdits = (): void => {
+  const handleKeepEdits = (seenDiskContent?: string): void => {
     trackExternalChangeConflictAction(file, 'keep')
-    keepTabEditsOverExternalChange(file)
+    keepTabEditsOverExternalChange(file, seenDiskContent)
   }
   const handleCompare = (): void => {
     trackExternalChangeConflictAction(file, 'compare')
@@ -169,7 +183,7 @@ export function ExternalFileChangeBanner({
               'Reload from Disk'
             )}
           </Button>
-          <Button type="button" size="xs" variant="ghost" onClick={handleKeepEdits}>
+          <Button type="button" size="xs" variant="ghost" onClick={() => handleKeepEdits()}>
             {translate(
               'auto.components.editor.ExternalFileChangeBanner.a95d02c644',
               'Keep My Edits'

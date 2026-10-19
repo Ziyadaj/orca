@@ -17,9 +17,22 @@ import {
   recordSelfWrite,
   SELF_WRITE_REMOTE_TTL_MS
 } from './editor-self-write-registry'
-import { getDiskBaselineSignature } from './diff-content-signature'
+import { getWrittenContentDiskSignature } from '../../../../shared/disk-baseline-signature'
 import { trackExternalChangeConflictAction } from './editor-external-change-telemetry'
 import { editorTabFileAccess } from '@/lib/local-file-access'
+import type { FileWriteResult } from '../../../../shared/file-write-disk-precondition'
+import {
+  applySaveDiskConflict,
+  getSaveDiskPrecondition,
+  isConfirmedDiskOverwrite,
+  SAVE_REFUSED_CHANGED_ON_DISK_MESSAGE,
+  SAVE_REFUSED_DELETED_ON_DISK_MESSAGE
+} from './editor-save-disk-precondition'
+import {
+  resolveEditorSaveBaseline,
+  settleEditorModelAfterOtherSurfaceSave,
+  restampEditorModelDiskBaseline
+} from './editor-model-disk-baseline'
 
 export type AppStoreApi = Pick<StoreApi<AppState>, 'getState' | 'subscribe'>
 
@@ -27,7 +40,8 @@ export type EditorSaveQueue = {
   queueSave: (
     file: OpenFile,
     fallbackContent: string,
-    trigger?: 'autosave' | 'user'
+    trigger?: 'autosave' | 'user',
+    confirmDiskOverwrite?: boolean
   ) => Promise<void>
   quiesceFileSave: (fileId: string) => Promise<void>
   clearAutoSaveTimer: (fileId: string) => void
@@ -59,10 +73,15 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
   const queueSave = (
     file: OpenFile,
     fallbackContent: string,
-    trigger: 'autosave' | 'user' = 'user'
+    trigger: 'autosave' | 'user' = 'user',
+    confirmDiskOverwrite = false
   ): Promise<void> => {
     clearAutoSaveTimer(file.id)
     const queuedGeneration = saveGeneration.get(file.id) ?? 0
+    const overwriteConfirmed = isConfirmedDiskOverwrite(
+      store.getState().openFiles.find((openFile) => openFile.id === file.id),
+      confirmDiskOverwrite
+    )
 
     const previousSave = saveQueue.get(file.id) ?? Promise.resolve()
     const queuedSave = previousSave
@@ -93,17 +112,23 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
           throw new Error('This file is still restoring its workspace owner. Try saving again.')
         }
 
-        // Why: only autosave is blocked while suspended; explicit user saves proceed (the banner warned).
+        // Why: only autosave is blocked while suspended; explicit saves proceed, guarded by the disk precondition.
         if (trigger === 'autosave' && isAutosaveSuspendedForFile(liveFile)) {
           return
         }
 
         flushPendingEditorChange(file.id, trigger === 'autosave')
-        const contentToSave = store.getState().editorDrafts[file.id] ?? fallbackContent
+        const draftOrFallback = store.getState().editorDrafts[file.id] ?? fallbackContent
+        // Why one read: an edit tab's text and the disk version it is based on must come together.
+        const saveBaseline =
+          liveFile.mode === 'edit'
+            ? resolveEditorSaveBaseline(file.id, draftOrFallback, liveFile.lastKnownDiskSignature)
+            : { content: draftOrFallback, signature: undefined, fromModel: false }
+        const contentToSave = saveBaseline.content
         if (
           trigger === 'autosave' &&
           hasPendingEditorChange(file.id) &&
-          liveFile.lastKnownDiskSignature === getDiskBaselineSignature(contentToSave)
+          liveFile.lastKnownDiskSignature === getWrittenContentDiskSignature(contentToSave)
         ) {
           return
         }
@@ -121,17 +146,52 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
             ? SELF_WRITE_REMOTE_TTL_MS
             : undefined
         )
+        const diskPrecondition = getSaveDiskPrecondition(
+          saveBaseline.signature,
+          trigger,
+          overwriteConfirmed
+        )
+        let writeResult: FileWriteResult
         try {
-          await writeRuntimeFile(
+          writeResult = await writeRuntimeFile(
             fileContext,
             liveFile.filePath,
             contentToSave,
-            editorTabFileAccess(state, liveFile)
+            editorTabFileAccess(state, liveFile),
+            diskPrecondition
           )
         } catch (error) {
           // Why: the self-write stamp is only valid after a real write; clear on failure so it can't suppress a real update.
           clearSelfWrite(liveFile.filePath, liveFile.runtimeEnvironmentId)
           throw error
+        }
+        if (!writeResult.ok) {
+          clearSelfWrite(liveFile.filePath, liveFile.runtimeEnvironmentId)
+          // Why: the file stays dirty; the user resolves the conflict through the banner or tombstone.
+          applySaveDiskConflict(store.getState(), file.id, writeResult.diskConflict, connectionId)
+          if (trigger === 'autosave') {
+            return
+          }
+          throw new Error(
+            writeResult.diskConflict === 'missing'
+              ? SAVE_REFUSED_DELETED_ON_DISK_MESSAGE
+              : SAVE_REFUSED_CHANGED_ON_DISK_MESSAGE
+          )
+        }
+        // Why: disk now holds contentToSave even if a quiesce superseded this save; a stale baseline would refuse the next one.
+        const writtenSignature = getWrittenContentDiskSignature(contentToSave)
+        store.getState().setLastKnownDiskSignature(file.id, writtenSignature)
+        if (saveBaseline.fromModel) {
+          restampEditorModelDiskBaseline(file.id, writtenSignature)
+        } else {
+          // Why: another surface (rich markdown, CSV, notebook) changed disk under the retained model;
+          // its next mount re-bases from the store record, which now holds the written version.
+          settleEditorModelAfterOtherSurfaceSave(
+            file.id,
+            saveBaseline.modelGeneration,
+            contentToSave,
+            writtenSignature
+          )
         }
 
         if ((saveGeneration.get(file.id) ?? 0) !== queuedGeneration) {
@@ -147,8 +207,7 @@ export function createEditorSaveQueue(store: AppStoreApi): EditorSaveQueue {
         if (!stillDirty) {
           nextState.clearEditorDraft(file.id)
         }
-        // Why: disk now holds contentToSave — rebaseline so our own save isn't flagged external; drop pending verification.
-        nextState.setLastKnownDiskSignature(file.id, getDiskBaselineSignature(contentToSave))
+        // Why: the save verified disk, so the restored-tab scan has nothing left to check.
         nextState.clearPendingDiskBaselineVerification(file.id)
         // Why: the write made disk match the buffer, so clear any now-stale changed-on-disk conflict.
         const savedFile = nextState.openFiles.find((openFile) => openFile.id === file.id)

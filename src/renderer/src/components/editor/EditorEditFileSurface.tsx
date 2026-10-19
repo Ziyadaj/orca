@@ -218,6 +218,8 @@ export function EditorEditFileSurface({
         // Why: read-only tabs no-op the change/save callbacks so no draft, dirty state, or write can occur.
         readOnly={activeFile.readOnly === true}
         liveTail={activeFile.liveTail === true}
+        diskContent={fileContent.content}
+        restoredDiskSignature={activeFile.lastKnownDiskSignature}
         onContentChange={
           activeFile.readOnly === true ? noopEditorContentChange : handleContentChange
         }

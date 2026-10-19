@@ -3,6 +3,7 @@ import { useAppStore } from '@/store'
 import type { OpenFile } from '@/store/slices/editor'
 import type { DiffContent, FileContent } from './editor-panel-content-types'
 import { isEditorContentUnchanged } from './editor-content-dirty-state'
+import { noteEditorDraftSource } from './editor-model-disk-baseline'
 
 /**
  * Builds the editor's content-change handler: record the draft, then reconcile
@@ -40,6 +41,7 @@ export function useEditorContentChangeHandler({
         return
       }
       setEditorDraft(file.id, content)
+      noteEditorDraftSource(file.id)
       const ignoreTrailingWhitespace = file.language === 'markdown'
       if (file.mode === 'edit') {
         const original = fileContentsRef.current[file.id]?.content ?? ''

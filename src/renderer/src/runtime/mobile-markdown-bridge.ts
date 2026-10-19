@@ -1,3 +1,4 @@
+import { noteOtherSurfaceEdit } from '@/components/editor/editor-model-disk-baseline'
 import {
   ORCA_EDITOR_FILE_SAVED_EVENT,
   requestEditorFileSave,
@@ -119,6 +120,8 @@ async function saveMobileMarkdownTab(
     const state = useAppStore.getState()
     const previousDraft = state.editorDrafts[freshTarget.sourceFile.id]
     const previousDirty = freshTarget.sourceFile.isDirty
+    // Why: the phone's text is not the desktop model's, so this save goes unguarded as before.
+    noteOtherSurfaceEdit(freshTarget.sourceFile.id)
     state.setEditorDraft(freshTarget.sourceFile.id, content)
     state.markFileDirty(freshTarget.sourceFile.id, true)
     let verified: string

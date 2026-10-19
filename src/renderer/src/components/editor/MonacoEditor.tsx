@@ -13,6 +13,7 @@ import { isLinuxUserAgent } from '../terminal-pane/pane-helpers'
 import { MAX_TOKENIZATION_LINE_LENGTH } from '@/lib/monaco-languages/monarch-embed-entry-budget'
 import { buildFileEditorWordWrapOptions } from './file-editor-word-wrap-options'
 import { toEditorModelUri } from './editor-model-uri'
+import type { EditorDiskBaselineSource } from './editor-model-disk-baseline'
 import { getEditorModelOwnerKey } from './editor-model-owner'
 import { getMonacoAutoHeightForContent, isMonacoAutoHeightCapped } from './monaco-auto-height'
 import { monacoFindOptions } from './monaco-find-options'
@@ -47,6 +48,10 @@ type MonacoEditorProps = {
   readOnly?: boolean
   liveTail?: boolean
   autoHeight?: boolean
+  /** The text loaded from disk for this tab; the model's disk baseline follows it. */
+  diskContent?: string
+  /** The persisted base of a restored draft, for a model that starts from that draft. */
+  restoredDiskSignature?: string
 }
 
 export default function MonacoEditor({
@@ -68,7 +73,9 @@ export default function MonacoEditor({
   conflictDecorationsEnabled = false,
   readOnly = false,
   liveTail = false,
-  autoHeight = false
+  autoHeight = false,
+  diskContent,
+  restoredDiskSignature
 }: MonacoEditorProps): React.JSX.Element {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const editorContainerRef = useRef<HTMLDivElement | null>(null)
@@ -124,6 +131,15 @@ export default function MonacoEditor({
   // Invariant: the mount path must read `contentRef.current` (guaranteed latest), never `lastSyncedContentRef.current` (may be stale pre-mount).
   const contentRef = useRef(content)
   contentRef.current = content
+  const diskBaselineRef = useRef<EditorDiskBaselineSource>({
+    fileId,
+    diskContent,
+    restoredDiskSignature
+  })
+  // Why declared before the sync bridge: its layout effect, and the later mount, must read these.
+  useLayoutEffect(() => {
+    diskBaselineRef.current = { fileId, diskContent, restoredDiskSignature }
+  }, [fileId, diskContent, restoredDiskSignature])
   // Gutter context menu state
   const [gutterMenuOpen, setGutterMenuOpen] = useState(false)
   const [gutterMenuPoint, setGutterMenuPoint] = useState({ x: 0, y: 0 })
@@ -138,7 +154,9 @@ export default function MonacoEditor({
     contentRef,
     contentSyncModeRef,
     modelKey: modelUri,
-    onContentChange
+    onContentChange,
+    diskBaselineRef,
+    diskContent
   })
   const annotations = useMonacoMarkdownAnnotations({
     mountedEditor,

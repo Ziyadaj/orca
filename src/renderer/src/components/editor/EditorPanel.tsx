@@ -18,6 +18,7 @@ import { useMarkdownPreviewShortcut } from './useMarkdownPreviewShortcut'
 import { useUntitledFileRename } from './useUntitledFileRename'
 import { extractFrontMatter } from './markdown-frontmatter'
 import { useEditorContentChangeHandler } from './use-editor-content-change-handler'
+import { noteOtherSurfaceEdit } from './editor-model-disk-baseline'
 import {
   selectEditorPanelGitBranchEntries,
   selectEditorPanelGitStatusEntries
@@ -170,6 +171,11 @@ function EditorPanelInner({
   const handleDirtyStateHint = useCallback(
     (dirty: boolean) => {
       if (activeFile) {
+        // Why: only non-Monaco surfaces (rich markdown, notebooks, CSV) report dirtiness this way;
+        // a "now clean" hint is not an edit.
+        if (dirty) {
+          noteOtherSurfaceEdit(activeFile.id)
+        }
         markFileDirty(activeFile.id, dirty)
       }
     },

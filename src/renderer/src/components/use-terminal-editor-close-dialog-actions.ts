@@ -4,8 +4,10 @@ import { useAppStore } from '../store'
 import {
   ORCA_EDITOR_REQUEST_FILE_CLOSE_EVENT,
   ORCA_EDITOR_SAVE_AND_CLOSE_EVENT,
-  type EditorRequestFileCloseDetail
+  type EditorRequestFileCloseDetail,
+  type EditorSaveAndCloseDetail
 } from './editor/editor-autosave'
+import { editorSaveFailureNotice } from './editor/editor-file-save-attempt'
 import { discardEditorFileChangesAndClose } from './editor/discard-editor-file-changes'
 import { translate } from '@/i18n/i18n'
 import type { TerminalEditorCloseQueueController } from './use-terminal-editor-close-queue'
@@ -58,11 +60,24 @@ export function useTerminalEditorCloseDialogActions(
     }
 
     setSaveDialogFileId(null)
-    window.dispatchEvent(new CustomEvent(ORCA_EDITOR_SAVE_AND_CLOSE_EVENT, { detail: { fileId } }))
+    let saveFailure: string | null = null
+    let reportFailure: (message: string) => void = () => undefined
+    const failed = new Promise<false>((resolve) => {
+      reportFailure = (message) => {
+        saveFailure = message
+        resolve(false)
+      }
+    })
+    window.dispatchEvent(
+      new CustomEvent<EditorSaveAndCloseDetail>(ORCA_EDITOR_SAVE_AND_CLOSE_EVENT, {
+        detail: { fileId, onSaveFailed: reportFailure }
+      })
+    )
     inFlightSaveFileIdRef.current = fileId
     let closed = false
     try {
-      closed = await waitForFileClosed(fileId, 10_000)
+      // Why: a refused or failed save reports at once instead of waiting out the timeout.
+      closed = await Promise.race([waitForFileClosed(fileId, 10_000), failed])
     } finally {
       if (inFlightSaveFileIdRef.current === fileId) {
         inFlightSaveFileIdRef.current = null
@@ -76,10 +91,12 @@ export function useTerminalEditorCloseDialogActions(
         return
       }
       toast.error(
-        translate(
-          'auto.components.Terminal.a2a279b32a',
-          'Save timed out or failed. Fix errors before closing.'
-        )
+        saveFailure === null
+          ? translate(
+              'auto.components.Terminal.a2a279b32a',
+              'Save timed out or failed. Fix errors before closing.'
+            )
+          : editorSaveFailureNotice(new Error(saveFailure))
       )
       setSaveDialogFileId(fileId)
       isClosingRef.current = false

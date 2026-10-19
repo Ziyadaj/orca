@@ -4,6 +4,7 @@ import {
   ORCA_EDITOR_QUIESCE_FILE_SAVES_EVENT,
   ORCA_EDITOR_SAVE_AND_CLOSE_EVENT,
   ORCA_EDITOR_SAVE_FILE_EVENT,
+  type EditorSaveAndCloseDetail,
   type EditorSaveFileDetail,
   type EditorSaveQuiesceDetail
 } from './editor-autosave'
@@ -38,7 +39,12 @@ export function attachEditorAutosaveController(store: AppStoreApi): () => void {
   })
 
   const handleSaveAndClose = async (event: Event): Promise<void> => {
-    const { fileId } = (event as CustomEvent<{ fileId: string }>).detail
+    const detail: EditorSaveAndCloseDetail | undefined =
+      event instanceof CustomEvent ? event.detail : undefined
+    if (!detail) {
+      return
+    }
+    const { fileId, onSaveFailed } = detail
     const file = store.getState().openFiles.find((openFile) => openFile.id === fileId)
     if (!file) {
       return
@@ -48,8 +54,10 @@ export function attachEditorAutosaveController(store: AppStoreApi): () => void {
     const draft = store.getState().editorDrafts[fileId]
     if (draft !== undefined) {
       try {
-        await queueSave(file, draft)
-      } catch {
+        // Why consent: the user pressed Save on this file's dialog, as on the banner-warned editor save.
+        await queueSave(file, draft, 'user', true)
+      } catch (error) {
+        onSaveFailed?.(error instanceof Error ? error.message : String(error))
         return
       }
     }
@@ -82,7 +90,7 @@ export function attachEditorAutosaveController(store: AppStoreApi): () => void {
         return
       }
 
-      await queueSave(file, content)
+      await queueSave(file, content, 'user', detail.confirmDiskOverwrite === true)
       detail.resolve()
     } catch (error) {
       detail.reject(String((error as Error)?.message ?? error))

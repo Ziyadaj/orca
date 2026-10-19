@@ -14,9 +14,14 @@ type ChangedOnDiskMarkState = {
 export function markFileChangedOnDisk(
   state: ChangedOnDiskMarkState,
   file: OpenFile,
-  options: { connectionId: string | undefined; origin: 'live' | 'restore' }
+  options: {
+    connectionId: string | undefined
+    origin: 'live' | 'restore'
+    /** A writer refused this tab's save: surface the conflict even if the tab reads as clean. */
+    saveRefused?: true
+  }
 ): void {
-  if (!file.isDirty || !canAutoSaveOpenFile(file)) {
+  if ((!file.isDirty && options.saveRefused !== true) || !canAutoSaveOpenFile(file)) {
     return
   }
   if (file.externalMutation !== 'changed') {

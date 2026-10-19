@@ -10,6 +10,10 @@ vi.mock('sonner', () => ({ toast: { error: toastError } }))
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 
 import { attemptEditorFileSave } from './editor-file-save-attempt'
+import {
+  SAVE_REFUSED_CHANGED_ON_DISK_MESSAGE,
+  SAVE_REFUSED_DELETED_ON_DISK_MESSAGE
+} from './editor-save-disk-precondition'
 
 describe('attemptEditorFileSave', () => {
   beforeEach(() => {
@@ -38,5 +42,21 @@ describe('attemptEditorFileSave', () => {
     expect(toastError).toHaveBeenCalledTimes(1)
     expect(toastError).toHaveBeenCalledWith('Failed to save the file. Please try again.')
     expect(consoleError).toHaveBeenCalledWith('[editor] file save failed', cause)
+  })
+
+  it.each([
+    [
+      SAVE_REFUSED_CHANGED_ON_DISK_MESSAGE,
+      'This file changed on disk. Review the change before saving.'
+    ],
+    [SAVE_REFUSED_DELETED_ON_DISK_MESSAGE, 'This file was deleted on disk.']
+  ])('names a disk refusal instead of the generic failure', async (message, notice) => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // The save event bridge rejects with a fresh Error carrying only the queue's message.
+    requestEditorFileSave.mockRejectedValue(new Error(message))
+
+    await expect(attemptEditorFileSave({ fileId: 'file-1' })).resolves.toBe(false)
+
+    expect(toastError).toHaveBeenCalledWith(notice)
   })
 })
