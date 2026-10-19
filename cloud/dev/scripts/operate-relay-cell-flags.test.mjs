@@ -36,7 +36,8 @@ const SUPPORTED = {
   reserveDryRun: { type: 'boolean' },
   rejectionFence: { type: 'boolean' },
   readTimeoutMarginMs: { type: 'number', min: 1_000, max: 60_000, integer: true },
-  reregisterInFlight: { type: 'number', min: 1, max: 16, integer: true }
+  reregisterInFlight: { type: 'number', min: 1, max: 16, integer: true },
+  phonePath: { type: 'enum', values: ['db', 'memory'] }
 }
 
 function fakeGoogleAndCell({
@@ -497,6 +498,54 @@ test('a reserve cell refuses readinessLocal=false, but takes it together with th
   )
   assert.equal((await run(request, fake).result).written, true)
   assert.deepEqual(fake.state.writes[0].object.flags, { readinessLocal: false, admitMode: 'db' })
+})
+
+test('phonePath=memory needs reserve, and a reserve flip never turns phones over unnamed', async () => {
+  const onDatabase = { generation: '7', object: { v: 1, cellId: CELL, flags: { readinessLocal: true } } }
+  const refused = fakeGoogleAndCell({ stored: onDatabase })
+  await assert.rejects(
+    run(parseCellFlagsRequest(values({ set: 'phonePath=memory', 'expected-generation': '7' })), refused).result,
+    /phonePath=memory requires admitMode=reserve/
+  )
+  assert.deepEqual(refused.state.writes, [])
+
+  const together = fakeGoogleAndCell({ stored: onDatabase })
+  const both = parseCellFlagsRequest(
+    values({ set: 'admitMode=reserve,phonePath=memory', 'expected-generation': '7', ...RESERVE })
+  )
+  assert.equal((await run(both, together).result).written, true)
+  assert.deepEqual(together.state.writes[0].object.flags, {
+    readinessLocal: true,
+    admitMode: 'reserve',
+    phonePath: 'memory'
+  })
+
+  const reserve = { readinessLocal: true, admitMode: 'reserve' }
+  const onReserve = fakeGoogleAndCell({ stored: { ...onDatabase, object: { ...onDatabase.object, flags: reserve } } })
+  const alone = parseCellFlagsRequest(values({ set: 'phonePath=memory', 'expected-generation': '7' }))
+  assert.equal((await run(alone, onReserve).result).written, true)
+
+  // Rolling back with admitMode=db leaves phonePath=memory in the object, which the cell ignores.
+  const memory = { ...reserve, phonePath: 'memory' }
+  const rollback = fakeGoogleAndCell({ stored: { ...onDatabase, object: { ...onDatabase.object, flags: memory } } })
+  rollback.state.directorAdmitMode = 'reserve'
+  const toDatabase = parseCellFlagsRequest(values({ ...DIRECTOR, set: 'admitMode=db', 'expected-generation': '7' }))
+  assert.equal((await run(toDatabase, rollback).result).written, true)
+  assert.deepEqual(rollback.state.writes[0].object.flags, { ...memory, admitMode: 'db' })
+
+  // phonePath=db removes the key, so an image without the switch still takes later writes.
+  const off = fakeGoogleAndCell({ stored: { ...onDatabase, object: { ...onDatabase.object, flags: memory } } })
+  assert.equal((await run(parseCellFlagsRequest(values({ set: 'phonePath=db', 'expected-generation': '7' })), off).result).written, true)
+  assert.deepEqual(off.state.writes[0].object.flags, reserve)
+
+  const lingering = { readinessLocal: true, admitMode: 'db', phonePath: 'memory' }
+  const unnamed = fakeGoogleAndCell({ stored: { ...onDatabase, object: { ...onDatabase.object, flags: lingering } } })
+  await assert.rejects(
+    run(parseCellFlagsRequest(values({ set: 'admitMode=reserve', 'expected-generation': '7', ...RESERVE })), unnamed)
+      .result,
+    /still says phonePath=memory/
+  )
+  assert.deepEqual(unnamed.state.writes, [])
 })
 
 test('a migration opened during the cache wait puts Postgres back to db', async () => {

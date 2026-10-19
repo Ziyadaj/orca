@@ -247,6 +247,8 @@ export type CellReserveAdmission = {
   directorContact?: () => void
   // The switch file's flip-back pace, when set.
   reregisterInFlight?: () => number | undefined
+  // The switch file's phone path; it acts only while the cell is in reserve mode.
+  phonePath?: () => 'db' | 'memory'
   // The pool-pressure shed's condition: a hello memory cannot admit is shed, not queued.
   databaseShedding: () => boolean
   book: CellReserveBook
@@ -451,6 +453,12 @@ export class HostSessionRegistry {
 
   inReserveMode(): boolean {
     return this.reserveMode()
+  }
+
+  // Step 6: the seat is authoritative only in reserve mode, so a dead-man trip or admitMode=db
+  // turns the memory phone path off for new phones too.
+  phonePathEffective(): 'db' | 'memory' {
+    return this.reserveMode() && this.reserveAdmission?.phonePath?.() === 'memory' ? 'memory' : 'db'
   }
 
   // Leaving reserve mode: every control admitted from memory gets the database lease it never
