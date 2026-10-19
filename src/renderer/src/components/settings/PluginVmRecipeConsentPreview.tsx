@@ -22,19 +22,53 @@ export function PluginVmRecipeConsentPreview({
 }: {
   recipes: readonly VmRecipePreview[]
 }): React.JSX.Element | null {
+  const machineProviders = recipes.filter((recipe) => recipe.machineProviderCommand)
+  const lifecycleRecipes = recipes.filter((recipe) => !recipe.machineProviderCommand)
   if (recipes.length === 0) {
     return null
   }
   return (
-    <section className="space-y-3" aria-labelledby="plugin-vm-recipe-consent-heading">
+    <>
+      {lifecycleRecipes.length > 0 ? (
+        <RecipeCommandSection
+          headingId="plugin-vm-recipe-consent-heading"
+          heading={translate(
+            'auto.components.settings.PluginVmRecipeConsentPreview.heading',
+            'VM recipe commands'
+          )}
+          recipes={lifecycleRecipes}
+        />
+      ) : null}
+      {machineProviders.length > 0 ? (
+        <RecipeCommandSection
+          headingId="plugin-machine-provider-consent-heading"
+          heading={translate(
+            'auto.components.settings.PluginVmRecipeConsentPreview.machineProviderHeading',
+            'Machine provider command'
+          )}
+          recipes={machineProviders}
+        />
+      ) : null}
+    </>
+  )
+}
+
+function RecipeCommandSection({
+  headingId,
+  heading,
+  recipes
+}: {
+  headingId: string
+  heading: string
+  recipes: readonly VmRecipePreview[]
+}): React.JSX.Element {
+  return (
+    <section className="space-y-3" aria-labelledby={headingId}>
       <h3
-        id="plugin-vm-recipe-consent-heading"
+        id={headingId}
         className="text-[11px] font-semibold uppercase tracking-[0.05em] text-muted-foreground"
       >
-        {translate(
-          'auto.components.settings.PluginVmRecipeConsentPreview.heading',
-          'VM recipe commands'
-        )}
+        {heading}
       </h3>
       {recipes.map((recipe) => (
         <div key={recipe.id} className="space-y-2 rounded-md border border-border p-3">

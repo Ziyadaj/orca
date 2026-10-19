@@ -221,6 +221,8 @@ describe('PluginConsentDialog', () => {
     expect(commands[0]?.textContent).toBe('"ssh" "-o" "BatchMode=yes" "omarchy" "orca sandbox"')
     expect(commands[0]?.getAttribute('aria-label')).toBe('Omarchy box · machine provider command')
     expect(document.body.textContent).toContain('Orca appends <verb> --json [--id <machine>]')
+    expect(document.body.textContent).toContain('Machine provider command')
+    expect(document.body.textContent).not.toContain('VM recipe commands')
   })
 
   it('shows plugin shortcuts and names built-in chords they replace', async () => {
