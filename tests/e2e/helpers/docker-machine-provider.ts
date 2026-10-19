@@ -3,7 +3,7 @@
  * is a Docker SSH host container. The app gets its config through launch env, so a spec calls
  * `dockerMachineProviderEnv()` in `test.use` and `prepareDockerMachineProvider()` in its body.
  */
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -29,7 +29,8 @@ export function dockerMachineProviderEnv(): Record<string, string> {
     ORCA_E2E_MACHINE_RUN_ID: RUN_ID,
     ORCA_E2E_MACHINE_IDENTITY_FILE: IDENTITY_FILE,
     // The app's isolated HOME must still reach the engine that runs the fixture containers.
-    DOCKER_CONFIG: process.env.DOCKER_CONFIG ?? path.join(os.homedir(), '.docker')
+    DOCKER_CONFIG: process.env.DOCKER_CONFIG ?? path.join(os.homedir(), '.docker'),
+    ORCA_E2E_MACHINE_DOCKER_HOME: os.homedir()
   }
 }
 
@@ -41,8 +42,31 @@ export type DockerMachineProvider = {
   cleanup: () => void
 }
 
+/**
+ * For a remote engine (DOCKER_HOST=ssh://…) whose firewall only admits SSH: with
+ * ORCA_E2E_MACHINE_PORT_RANGE and ORCA_E2E_MACHINE_TUNNEL_HOST set, forwards each port in the range
+ * from this computer's loopback to the engine host's, so machines are reachable at 127.0.0.1.
+ */
+function openPortRangeTunnel(): ChildProcess | null {
+  const tunnelHost = process.env.ORCA_E2E_MACHINE_TUNNEL_HOST?.trim()
+  const range = process.env.ORCA_E2E_MACHINE_PORT_RANGE?.match(/^(\d+)-(\d+)$/)
+  if (!tunnelHost || !range) {
+    return null
+  }
+  const forwards: string[] = []
+  for (let port = Number(range[1]); port <= Number(range[2]); port++) {
+    forwards.push('-L', `127.0.0.1:${port}:127.0.0.1:${port}`)
+  }
+  return spawn(
+    'ssh',
+    ['-N', '-o', 'BatchMode=yes', '-o', 'ExitOnForwardFailure=yes', ...forwards, tunnelHost],
+    { stdio: 'ignore' }
+  )
+}
+
 export function prepareDockerMachineProvider(root = process.cwd()): DockerMachineProvider {
   ensureDockerSshHostImage(root)
+  const tunnel = openPortRangeTunnel()
   mkdirSync(KEY_DIR, { recursive: true })
   if (!existsSync(IDENTITY_FILE)) {
     execFileSync('ssh-keygen', ['-t', 'ed25519', '-N', '', '-f', IDENTITY_FILE, '-q'])
@@ -71,6 +95,7 @@ export function prepareDockerMachineProvider(root = process.cwd()): DockerMachin
       return id || null
     },
     cleanup: () => {
+      tunnel?.kill()
       const ids = runContainers()
       if (ids.length > 0) {
         spawnSync('docker', ['rm', '-f', ...ids], { stdio: 'ignore', timeout: 30_000 })
@@ -116,7 +141,7 @@ export async function installDockerMachineProvider(page: Page, pluginDir: string
   await page.getByRole('tab', { name: /^Installed/ }).click()
   const row = page.locator(`[data-plugin-key="${pluginKey}"]`)
   await row.getByRole('button', { name: 'Review & enable' }).click()
-  const consent = page.getByRole('dialog', { name: 'Review permissions' })
+  const consent = page.getByRole('dialog', { name: /Review (permissions|plugin content)/ })
   await expect(consent.getByLabel('Docker machines · machine provider command')).toHaveText(
     '"$orca-node" "$plugin/bin/docker-machine-provider.mjs"'
   )

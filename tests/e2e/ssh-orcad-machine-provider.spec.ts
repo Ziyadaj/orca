@@ -4,6 +4,7 @@
  * composer, sidebar and pane journey stacks on this once the Machines UI lands.
  */
 import { randomUUID } from 'node:crypto'
+import type { MachineActionResult, MachineRecord } from '../../src/shared/machine-inventory'
 import { expect, test } from './helpers/orca-app'
 import {
   DOCKER_MACHINE_PROVIDER_KEY,
@@ -17,6 +18,7 @@ import {
 import { ORCAD_TEMPLATE, skipUnlessManagedDockerHost } from './helpers/orcad-managed-workspace'
 import { waitForSessionReady } from './helpers/store'
 
+// Machines are served by a managed Orca server; a plain relay refuses them.
 skipUnlessManagedDockerHost()
 test.skip(process.platform === 'win32', 'The fixture provider drives the Docker CLI on POSIX hosts')
 test.use({
@@ -59,47 +61,35 @@ test('runs a provider machine through create, connect, sleep, wake and delete', 
       },
       { providerKey: DOCKER_MACHINE_PROVIDER_KEY, operationId }
     )
-    if (!created.result.ok) {
-      throw new Error(created.result.message)
-    }
-    const machine = created.result.value
+    const machine = unwrap(created.result)
     expect(machine).toMatchObject({ state: 'running', lifetime: 'temporary' })
     expect(created.progress).toContain('starting docker machine')
     const container = provider.containerFor(machine.id)
     expect(container).not.toBeNull()
 
-    const connect = () =>
-      orcaPage.evaluate((target) => window.api.machines.connect(target), {
-        providerKey: DOCKER_MACHINE_PROVIDER_KEY,
-        machineId: machine.id
-      })
-    // ssh2 accepts only the key the provider read from the container.
-    await expect(connect()).resolves.toMatchObject({ ok: true, value: { kind: 'ssh' } })
+    const target = { providerKey: DOCKER_MACHINE_PROVIDER_KEY, machineId: machine.id }
+    const connect = async () =>
+      unwrap(await orcaPage.evaluate((args) => window.api.machines.connect(args), target))
+    // Only the key the provider read from the container is accepted.
+    expect(await connect()).toMatchObject({ kind: 'ssh' })
 
-    const slept = await orcaPage.evaluate((target) => window.api.machines.sleep(target), {
-      providerKey: DOCKER_MACHINE_PROVIDER_KEY,
-      machineId: machine.id
-    })
-    expect(slept).toMatchObject({ ok: true, value: { state: 'sleeping' } })
+    const slept = unwrap(await orcaPage.evaluate((args) => window.api.machines.sleep(args), target))
+    expect(slept.state).toBe('sleeping')
     expect(isDockerMachineRunning(container!)).toBe(false)
 
-    const portBefore = machine.access?.kind === 'ssh' ? machine.access.port : null
-    const woken = await orcaPage.evaluate((target) => window.api.machines.wake(target), {
-      providerKey: DOCKER_MACHINE_PROVIDER_KEY,
-      machineId: machine.id
-    })
-    expect(woken).toMatchObject({ ok: true, value: { state: 'running' } })
+    const woken = unwrap(await orcaPage.evaluate((args) => window.api.machines.wake(args), target))
+    expect(woken.state).toBe('running')
     // Docker remaps the port on start, so this connect moves the same target to a new endpoint.
-    const portAfter =
-      woken.ok && woken.value.access?.kind === 'ssh' ? woken.value.access.port : null
-    expect(portAfter).not.toBe(portBefore)
-    await expect(connect()).resolves.toMatchObject({ ok: true, value: { kind: 'ssh' } })
+    // A fixed port range (a remote engine behind a firewall) keeps the port across wake.
+    if (!process.env.ORCA_E2E_MACHINE_PORT_RANGE) {
+      expect(sshPort(woken)).not.toBe(sshPort(machine))
+    }
+    expect(await connect()).toMatchObject({ kind: 'ssh' })
 
-    const deleted = await orcaPage.evaluate((target) => window.api.machines.delete(target), {
-      providerKey: DOCKER_MACHINE_PROVIDER_KEY,
-      machineId: machine.id
-    })
-    expect(deleted).toMatchObject({ ok: true, value: { state: 'gone' } })
+    const deleted = unwrap(
+      await orcaPage.evaluate((args) => window.api.machines.delete(args), target)
+    )
+    expect(deleted.state).toBe('gone')
     expect(provider.containerFor(machine.id)).toBeNull()
     // A machine Orca deleted itself holds no target, so the next list drops its row.
     expect((await machineSnapshot(orcaPage))?.machines).toEqual([])
@@ -107,3 +97,14 @@ test('runs a provider machine through create, connect, sleep, wake and delete', 
     provider?.cleanup()
   }
 })
+
+function unwrap<T>(result: MachineActionResult<T>): T {
+  if (!result.ok) {
+    throw new Error(`${result.code}: ${result.message}`)
+  }
+  return result.value
+}
+
+function sshPort(record: MachineRecord): number | null {
+  return record.access?.kind === 'ssh' ? record.access.port : null
+}

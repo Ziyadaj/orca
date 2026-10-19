@@ -1,8 +1,9 @@
 // E2E machine provider (protocolVersion 1). Each machine is a container of the Docker SSH host
 // image, labelled with its id and create operationId; sleep stops it and wake starts it, which
 // remaps its SSH port, so Orca's endpoint-change path runs. Configured by the spec through env:
-// ORCA_E2E_MACHINE_IMAGE, ORCA_E2E_MACHINE_RUN_ID, ORCA_E2E_MACHINE_IDENTITY_FILE, and
-// ORCA_E2E_SSH_TARGET_HOST (defaults to 127.0.0.1).
+// ORCA_E2E_MACHINE_IMAGE, ORCA_E2E_MACHINE_RUN_ID, ORCA_E2E_MACHINE_IDENTITY_FILE,
+// ORCA_E2E_SSH_TARGET_HOST (defaults to 127.0.0.1), and optionally ORCA_E2E_MACHINE_PORT_RANGE.
+// With DOCKER_HOST set to a remote engine, set ORCA_E2E_SSH_TARGET_HOST to that host's address.
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
@@ -17,9 +18,17 @@ const contextId = `docker:${runId}`
 const request = JSON.parse(readFileSync(0, 'utf8') || '{}')
 const label = (key) => `orca.e2e.machine.${key}`
 
+// The app runs with an isolated HOME; docker keeps the developer's, so an ssh:// DOCKER_HOST still
+// finds their ssh config and keys.
+const dockerEnv = {
+  ...process.env,
+  HOME: process.env.ORCA_E2E_MACHINE_DOCKER_HOME || process.env.HOME
+}
+
 function docker(...args) {
   return execFileSync('docker', args, {
     encoding: 'utf8',
+    env: dockerEnv,
     stdio: ['ignore', 'pipe', 'pipe']
   }).trim()
 }
@@ -62,7 +71,7 @@ function view(container) {
   if (!running) {
     return machine
   }
-  const port = Number(docker('port', container.Id, '22/tcp').split('\n')[0].split(':').at(-1))
+  const port = sshPort(container)
   // The comment field is dropped: Orca pins "<type> <base64>" only.
   const hostKey = docker('exec', container.Id, 'cat', '/etc/ssh/ssh_host_ed25519_key.pub')
     .split(' ')
@@ -108,13 +117,14 @@ function create() {
       ? new Date(createdAt.getTime() + (params.ttlSeconds ?? 3600) * 1000).toISOString()
       : ''
   const publicKey = readFileSync(`${process.env.ORCA_E2E_MACHINE_IDENTITY_FILE}.pub`, 'utf8').trim()
+  const name = `orca-e2e-machine-${id}`
+  const publish = publishArgs(name)
   docker(
     'run',
     '-d',
     '--name',
-    `orca-e2e-machine-${id}`,
-    '-p',
-    `${host === '127.0.0.1' ? host : '0.0.0.0'}::22`,
+    name,
+    ...publish.args,
     '--label',
     `${label('run')}=${runId}`,
     '--label',
@@ -140,11 +150,49 @@ function create() {
       `mkdir -p ${PROJECT_ROOT}`,
       'git config --global user.email e2e@test.local',
       'git config --global user.name "Orca Machine E2E"',
-      'exec /usr/sbin/sshd -D -e'
+      `exec /usr/sbin/sshd -D -e -p ${publish.sshdPort}`
     ].join(' && ')
   )
   process.stderr.write('docker machine running\n')
   respond({ kind: 'machine', machine: view(find(id)) })
+}
+
+// Docker-published ports by default. A remote engine whose firewall drops forwarded traffic
+// (ufw with Docker) needs ports it accepts on the host itself, given as
+// ORCA_E2E_MACHINE_PORT_RANGE="<first>-<last>": sshd then runs on the host network on one of them,
+// so its port stays the same across wake.
+const PORT_RANGE = process.env.ORCA_E2E_MACHINE_PORT_RANGE?.match(/^(\d+)-(\d+)$/)
+
+function publishArgs(container) {
+  if (!PORT_RANGE) {
+    return { args: ['-p', `${host === '127.0.0.1' ? host : '0.0.0.0'}::22`], sshdPort: 22 }
+  }
+  const taken = new Set(
+    docker(
+      'ps',
+      '-a',
+      '--filter',
+      `label=${label('port')}`,
+      '--format',
+      `{{.Label "${label('port')}"}}`
+    )
+      .split('\n')
+      .filter(Boolean)
+      .map(Number)
+  )
+  for (let port = Number(PORT_RANGE[1]); port <= Number(PORT_RANGE[2]); port++) {
+    if (!taken.has(port)) {
+      return { args: ['--network', 'host', '--label', `${label('port')}=${port}`], sshdPort: port }
+    }
+  }
+  throw new Error(`no free port in ${process.env.ORCA_E2E_MACHINE_PORT_RANGE} for ${container}`)
+}
+
+function sshPort(container) {
+  const fixed = container.Config.Labels[label('port')]
+  return fixed
+    ? Number(fixed)
+    : Number(docker('port', container.Id, '22/tcp').split('\n')[0].split(':').at(-1))
 }
 
 function targeted(action) {
