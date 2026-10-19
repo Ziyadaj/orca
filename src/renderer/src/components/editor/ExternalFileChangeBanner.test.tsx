@@ -27,6 +27,7 @@ import {
   keepTabEditsOverExternalChange,
   reloadTabContentFromDisk
 } from './ExternalFileChangeBanner'
+import { markFileChangedOnDisk } from './editor-changed-on-disk-mark'
 import { getDiskBaselineSignature } from './diff-content-signature'
 import { useAppStore } from '@/store'
 
@@ -193,8 +194,13 @@ describe('ExternalFileChangeBanner', () => {
     expect(setLastKnownDiskSignature).toHaveBeenCalledWith('file-1', 'pre-reload-signature')
   })
 
-  it('keep-my-edits clears the mark without touching the draft or dirty flag', () => {
+  it('keep-my-edits clears the mark without touching the draft or dirty flag', async () => {
+    readRuntimeFileContentMock.mockResolvedValue({ content: 'agent content', isBinary: false })
+    mockStoreState({}, [{ ...file, externalMutation: 'changed' } as OpenFile])
+
     keepTabEditsOverExternalChange(file)
+    await Promise.resolve()
+    await Promise.resolve()
 
     expect(setExternalMutation).toHaveBeenCalledWith('file-1', null)
     expect(clearEditorDraft).not.toHaveBeenCalled()
@@ -203,9 +209,11 @@ describe('ExternalFileChangeBanner', () => {
 
   it('keep-my-edits advances the disk baseline so the dismissal survives restart', async () => {
     readRuntimeFileContentMock.mockResolvedValue({ content: 'agent content', isBinary: false })
-    mockStoreState({}, [{ ...file, externalMutation: undefined } as OpenFile])
+    mockStoreState({}, [{ ...file, externalMutation: 'changed' } as OpenFile])
 
     keepTabEditsOverExternalChange(file)
+    // Why: the conflict (and its autosave hold) stays until the new base is adopted.
+    expect(setExternalMutation).not.toHaveBeenCalled()
     await Promise.resolve()
     await Promise.resolve()
 
@@ -213,20 +221,34 @@ describe('ExternalFileChangeBanner', () => {
       'file-1',
       getDiskBaselineSignature('agent content')
     )
+    expect(setExternalMutation).toHaveBeenCalledWith('file-1', null)
+    expect(setLastKnownDiskSignature.mock.invocationCallOrder[0]).toBeLessThan(
+      setExternalMutation.mock.invocationCallOrder[0]!
+    )
   })
 
   it('keep-my-edits does not stamp a baseline over a newer conflict', async () => {
     // Why: if the file changed again before the read resolved, the fresh
     // 'changed' mark owns the baseline — stamping would hide that conflict
     // from the restart scan.
-    readRuntimeFileContentMock.mockResolvedValue({ content: 'even newer', isBinary: false })
-    mockStoreState({}, [{ ...file, externalMutation: 'changed' } as OpenFile])
+    let finishRead: (value: { content: string; isBinary: boolean }) => void = () => undefined
+    readRuntimeFileContentMock.mockReturnValue(
+      new Promise((resolve) => {
+        finishRead = resolve
+      })
+    )
+    const tab: OpenFile = { ...file, isDirty: true, externalMutation: 'changed' }
+    mockStoreState({}, [tab])
 
     keepTabEditsOverExternalChange(file)
+    markFileChangedOnDisk(useAppStore.getState(), tab, { connectionId: undefined, origin: 'live' })
+    vi.mocked(setExternalMutation).mockClear()
+    finishRead({ content: 'even newer', isBinary: false })
     await Promise.resolve()
     await Promise.resolve()
 
     expect(setLastKnownDiskSignature).not.toHaveBeenCalled()
+    expect(setExternalMutation).not.toHaveBeenCalled()
   })
 
   it.each([

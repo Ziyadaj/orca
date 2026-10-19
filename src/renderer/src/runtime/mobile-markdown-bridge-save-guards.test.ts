@@ -6,6 +6,15 @@ import {
 import { attachEditorAutosaveController } from '../components/editor/editor-autosave-controller'
 import { useAppStore } from '../store'
 import { attachMobileMarkdownBridge } from './mobile-markdown-bridge'
+import { createFakeEditorModel } from '../components/editor/editor-autosave-controller-test-fixture'
+import {
+  __clearEditorModelDiskBaselinesForTests,
+  noteEditorDraftSource,
+  reportEditorModelEdit,
+  resolveEditorSaveBaseline,
+  stampEditorModelDiskBaseline
+} from '../components/editor/editor-model-disk-baseline'
+import { getDiskBaselineSignature } from '../../../shared/disk-baseline-signature'
 import {
   cleanupMobileMarkdownBridgeHarness,
   createDeferred,
@@ -56,6 +65,45 @@ describe('mobile markdown bridge save guards', () => {
     } finally {
       detachAutosave()
       detachBridge()
+    }
+  })
+
+  it('keeps the desktop draft guarded after a failed mobile save rolls back', async () => {
+    openMarkdownFile()
+    const fileId = '/repo/README.md'
+    // The desktop draft was typed in the tab's Monaco model, which knows its disk version.
+    const model = createFakeEditorModel('desktop draft')
+    stampEditorModelDiskBaseline(fileId, model, getDiskBaselineSignature('disk'))
+    reportEditorModelEdit(fileId, () => {
+      useAppStore.getState().setEditorDraft(fileId, 'desktop draft')
+      noteEditorDraftSource(fileId)
+    })
+    useAppStore.getState().markFileDirty(fileId, true)
+    setupWindow({
+      readFile: vi.fn().mockResolvedValue({ content: 'desktop draft', isBinary: false }),
+      writeFile: vi.fn().mockRejectedValue(new Error('disk full'))
+    })
+    const detachBridge = attachMobileMarkdownBridge()
+    const detachAutosave = attachEditorAutosaveController(useAppStore as never)
+
+    try {
+      await sendRequest({
+        id: 'save-fail',
+        operation: 'save',
+        worktreeId: 'wt-1',
+        tabId: 'tab-md',
+        baseVersion: hashMarkdownContent('desktop draft'),
+        content: 'mobile edit'
+      })
+
+      expect(resolveEditorSaveBaseline(fileId, 'desktop draft', undefined)).toMatchObject({
+        fromModel: true,
+        signature: getDiskBaselineSignature('disk')
+      })
+    } finally {
+      detachAutosave()
+      detachBridge()
+      __clearEditorModelDiskBaselinesForTests()
     }
   })
 

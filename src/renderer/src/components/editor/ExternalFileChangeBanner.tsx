@@ -12,6 +12,7 @@ import type { OpenFile } from '@/store/slices/editor'
 import { ExternalFileChangeCompareDialog } from './ExternalFileChangeCompareDialog'
 import { getDiskBaselineSignature } from './diff-content-signature'
 import { restampEditorModelDiskBaseline } from './editor-model-disk-baseline'
+import { getChangedOnDiskMarkGeneration } from './editor-changed-on-disk-mark'
 import { trackExternalChangeConflictAction } from './editor-external-change-telemetry'
 
 // Why: when an external process (usually an agent) rewrites a file while the
@@ -90,10 +91,10 @@ function adoptDiskBaseline(fileId: string, signature: string): void {
 /** `seenDiskContent`: the disk text the compare dialog showed, when Keep was chosen there. */
 export function keepTabEditsOverExternalChange(file: OpenFile, seenDiskContent?: string): void {
   const state = useAppStore.getState()
-  state.setExternalMutation(file.id, null)
   if (seenDiskContent !== undefined) {
     // Why: adopt only the version the user compared against; a later write makes the next save refuse.
     adoptDiskBaseline(file.id, getDiskBaselineSignature(seenDiskContent))
+    state.setExternalMutation(file.id, null)
     return
   }
   // Why: the dismissal must survive restart — without advancing the baseline
@@ -103,7 +104,25 @@ export function keepTabEditsOverExternalChange(file: OpenFile, seenDiskContent?:
   // re-surface the banner — never lose data.
   const target = getRuntimeTargetForFileOwner(state, file.worktreeId, file.runtimeEnvironmentId)
   if (!target) {
+    state.setExternalMutation(file.id, null)
     return
+  }
+  // Why the conflict stays until the read lands: it holds autosave, which would otherwise save
+  // against the old base, be refused, and raise the banner again on every slow remote read.
+  const markGeneration = getChangedOnDiskMarkGeneration(file.id)
+  const dismiss = (signature?: string): void => {
+    const liveFile = useAppStore.getState().openFiles.find((openFile) => openFile.id === file.id)
+    // Why: a reload, a deletion, a closed tab or a newer conflict in the interim owns the outcome.
+    if (
+      liveFile?.externalMutation !== 'changed' ||
+      getChangedOnDiskMarkGeneration(file.id) !== markGeneration
+    ) {
+      return
+    }
+    if (signature !== undefined) {
+      adoptDiskBaseline(file.id, signature)
+    }
+    useAppStore.getState().setExternalMutation(file.id, null)
   }
   void readRuntimeFileContent({
     target,
@@ -114,20 +133,10 @@ export function keepTabEditsOverExternalChange(file: OpenFile, seenDiskContent?:
     expectedExternalSshTargetId: file.externalSshTargetId,
     access: editorTabFileAccess(state, file)
   })
-    .then((result) => {
-      if (result.isBinary) {
-        return
-      }
-      const current = useAppStore.getState()
-      const liveFile = current.openFiles.find((openFile) => openFile.id === file.id)
-      // Why: only stamp while the dismissal still stands — a save or a newer
-      // conflict marked in the interim owns the baseline.
-      if (!liveFile || liveFile.externalMutation === 'changed') {
-        return
-      }
-      adoptDiskBaseline(file.id, getDiskBaselineSignature(result.content))
-    })
-    .catch(() => undefined)
+    .then((result) =>
+      dismiss(result.isBinary ? undefined : getDiskBaselineSignature(result.content))
+    )
+    .catch(() => dismiss())
 }
 
 export function ExternalFileChangeBanner({

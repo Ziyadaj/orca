@@ -1,4 +1,7 @@
-import { noteOtherSurfaceEdit } from '@/components/editor/editor-model-disk-baseline'
+import {
+  captureEditorTabSaveSource,
+  noteOtherSurfaceEdit
+} from '@/components/editor/editor-model-disk-baseline'
 import {
   ORCA_EDITOR_FILE_SAVED_EVENT,
   requestEditorFileSave,
@@ -121,6 +124,7 @@ async function saveMobileMarkdownTab(
     const previousDraft = state.editorDrafts[freshTarget.sourceFile.id]
     const previousDirty = freshTarget.sourceFile.isDirty
     // Why: the phone's text is not the desktop model's, so this save goes unguarded as before.
+    const restoreSaveSource = captureEditorTabSaveSource(freshTarget.sourceFile.id)
     noteOtherSurfaceEdit(freshTarget.sourceFile.id)
     state.setEditorDraft(freshTarget.sourceFile.id, content)
     state.markFileDirty(freshTarget.sourceFile.id, true)
@@ -132,7 +136,13 @@ async function saveMobileMarkdownTab(
         throw new Error('save_verification_failed')
       }
     } catch (error) {
-      restoreFailedMobileSaveDraft(freshTarget.sourceFile.id, content, previousDraft, previousDirty)
+      restoreFailedMobileSaveDraft(
+        freshTarget.sourceFile.id,
+        content,
+        previousDraft,
+        previousDirty,
+        restoreSaveSource
+      )
       throw error
     }
 
@@ -149,7 +159,8 @@ function restoreFailedMobileSaveDraft(
   fileId: string,
   injectedContent: string,
   previousDraft: string | undefined,
-  previousDirty: boolean
+  previousDirty: boolean,
+  restoreSaveSource: () => void
 ): void {
   const state = useAppStore.getState()
   const currentDraft = state.editorDrafts[fileId]
@@ -164,6 +175,8 @@ function restoreFailedMobileSaveDraft(
     state.setEditorDraft(fileId, previousDraft)
   }
   state.markFileDirty(fileId, previousDirty)
+  // Why: the rolled-back edit was the phone's; the desktop draft it restores keeps its own guard.
+  restoreSaveSource()
 }
 
 async function enqueueMarkdownSave<T>(fileId: string, save: () => Promise<T>): Promise<T> {

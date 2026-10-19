@@ -109,6 +109,18 @@ export function noteOtherSurfaceEdit(fileId: string): void {
   otherSurfaceTabs.add(fileId)
 }
 
+/** Undoes a `noteOtherSurfaceEdit` whose edit was rolled back; returns the restore step. */
+export function captureEditorTabSaveSource(fileId: string): () => void {
+  const wasOtherSurface = otherSurfaceTabs.has(fileId)
+  return () => {
+    if (wasOtherSurface) {
+      otherSurfaceTabs.add(fileId)
+    } else {
+      otherSurfaceTabs.delete(fileId)
+    }
+  }
+}
+
 /** A closed tab's id can come back for a different file session; start it fresh. */
 export function forgetEditorTabSaveSource(fileId: string): void {
   otherSurfaceTabs.delete(fileId)
@@ -157,22 +169,27 @@ export function resolveEditorSaveBaseline(
 }
 
 /**
- * The base a persisted draft carries: the one its save compares against. Why not the store's: a
- * stale split pane can base the model (and so the draft) on an older disk version than the store's.
+ * The draft a session persists and the base it carries, read together. Why the model's text and
+ * base for a Monaco-edited tab: the store's draft can lag the model (mid paste) and the store's
+ * base can differ from the model's (a stale split pane), and a restore must pair the two that match.
  */
-export function persistedDraftDiskBaselineField(
+export function persistedEditorDraftFields(
   fileId: string,
-  draft: string | undefined,
+  storeDraft: string | undefined,
   storeSignature: string | undefined
-): { lastKnownDiskSignature?: string } {
+): { dirtyDraftContent?: string; lastKnownDiskSignature?: string } {
+  if (storeDraft === undefined) {
+    return {}
+  }
   const model = tabModels.get(fileId)
+  const fromModel = !otherSurfaceTabs.has(fileId) && model !== undefined && !model.isDisposed()
   // Why the store's as fallback: a base dropped after another surface's save still lets a restore
   // notice an offline write, as before this check existed.
-  const signature =
-    otherSurfaceTabs.has(fileId) || !model || model.isDisposed()
-      ? storeSignature
-      : (modelBaselines.get(model) ?? storeSignature)
-  return draft !== undefined && signature ? { lastKnownDiskSignature: signature } : {}
+  const signature = fromModel ? (modelBaselines.get(model) ?? storeSignature) : storeSignature
+  return {
+    dirtyDraftContent: fromModel ? model.getValue() : storeDraft,
+    ...(signature ? { lastKnownDiskSignature: signature } : {})
+  }
 }
 
 /** What a Monaco editor knows about the disk text behind its tab, read when text enters the model. */

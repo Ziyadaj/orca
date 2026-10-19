@@ -428,6 +428,23 @@ describe('a tab whose shared Monaco model owns the disk baseline', () => {
     expect(tab.disk.files.get(FILE_ID)).toBe('B')
   })
 
+  it('persists the model text with its base when a save lands mid chunked paste', async () => {
+    const tab = attach(setUp('A', 'A'))
+    tab.type('A typed')
+    // The paste lands in the model; the save writes it before the draft catches up.
+    tab.model.setText('A typed + pasted')
+    await tab.save()
+    expect(tab.disk.files.get(FILE_ID)).toBe('A typed + pasted')
+    tab.store.getState().markFileDirty(FILE_ID, true)
+
+    const state = tab.store.getState()
+    const persisted = buildEditorSessionData(state.openFiles, state.editorDrafts, {}, {}, {})
+      .openFilesByWorktree?.['wt-1']?.[0]
+    // A restore must never pair the pre-paste draft with the saved text's version.
+    expect(persisted?.dirtyDraftContent).toBe('A typed + pasted')
+    expect(persisted?.lastKnownDiskSignature).toBe(getDiskBaselineSignature('A typed + pasted'))
+  })
+
   it('persists a draft with the base its model holds, so a restart cannot adopt a newer one', async () => {
     // The store loaded B; a stale split pane remounted A into the shared model, and the user typed.
     const tab = attach(setUp('B', 'B'))

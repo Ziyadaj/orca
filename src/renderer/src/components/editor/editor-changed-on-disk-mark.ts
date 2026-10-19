@@ -6,6 +6,13 @@ type ChangedOnDiskMarkState = {
   setExternalMutation: (fileId: string, mutation: 'deleted' | 'renamed' | 'changed' | null) => void
 }
 
+const markGenerations = new Map<string, number>()
+
+/** Advances with every changed-on-disk mark, so a pending dismissal can tell a newer conflict arrived. */
+export function getChangedOnDiskMarkGeneration(fileId: string): number {
+  return markGenerations.get(fileId) ?? 0
+}
+
 // Why: the changed-on-disk mark has one rule — dirty, banner-capable tab,
 // telemetry only on the first surfacing — but three writers (the watch hook
 // at fs-event time, the autosave controller's notification backstop, and the
@@ -27,5 +34,6 @@ export function markFileChangedOnDisk(
   if (file.externalMutation !== 'changed') {
     trackExternalChangeConflictShown(file, options)
   }
+  markGenerations.set(file.id, getChangedOnDiskMarkGeneration(file.id) + 1)
   state.setExternalMutation(file.id, 'changed')
 }
