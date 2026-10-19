@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { toRuntimeExecutionHostId, toSshExecutionHostId } from '../../shared/execution-host'
 import { MachineProviderError, type ProviderMachine } from '../../shared/machine-provider-protocol'
 import {
   isStalePendingCreate,
@@ -138,4 +139,29 @@ export function failureOf(error: unknown, at: number): MachineProviderFailure {
 
 export function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** Gone rows kept only as Gone links for worktrees; beyond this the oldest are dropped. */
+export const MAX_GONE_MACHINE_RECORDS = 50
+
+/**
+ * Drops gone rows no repo or workspace on this host still runs on, then caps the rest. A row's
+ * links are its SSH target and its runtime or managed server environments, as execution host ids.
+ */
+export function pruneGoneRecords(
+  inventory: MachineProviderInventory,
+  isHostReferenced: (hostId: string) => boolean
+): void {
+  const linked = (record: MachineRecord): boolean =>
+    [
+      record.sshTargetId ? toSshExecutionHostId(record.sshTargetId) : null,
+      record.runtimeEnvironmentId ? toRuntimeExecutionHostId(record.runtimeEnvironmentId) : null,
+      record.managedEnvironmentId ? toRuntimeExecutionHostId(record.managedEnvironmentId) : null
+    ].some((hostId) => hostId !== null && isHostReferenced(hostId))
+  const kept = inventory.machines.filter((record) => record.state !== 'gone' || linked(record))
+  const newestGoneFirst = kept
+    .filter((record) => record.state === 'gone')
+    .sort((left, right) => right.lastSeenAt - left.lastSeenAt)
+  const dropped = new Set(newestGoneFirst.slice(MAX_GONE_MACHINE_RECORDS))
+  inventory.machines = kept.filter((record) => !dropped.has(record))
 }

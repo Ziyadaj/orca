@@ -114,6 +114,32 @@ describe('MachineService recovery', () => {
     expect(snapshot.machines[0]).not.toHaveProperty('sshTargetId', expect.anything())
   })
 
+  it('drops a gone row on the next list once no repo or workspace runs on its server', async () => {
+    const referenced = new Set(['runtime:env-machine'])
+    const { deps, sshTargets } = await setup({
+      list: [inventory([machine()]), inventory([]), inventory([])],
+      delete: fail('not-found')
+    })
+    const service = new MachineService({
+      ...deps,
+      isHostReferenced: (hostId) => referenced.has(hostId)
+    })
+    vi.mocked(sshTargets.connect).mockResolvedValueOnce({
+      targetId: 't',
+      status: 'connected',
+      error: null,
+      reconnectAttempt: 0,
+      managedServer: { kind: 'managed', environmentId: 'env-machine' }
+    })
+    await service.list(KEY)
+    await service.connect(KEY, 'sbx-1')
+    await service.delete(KEY, 'sbx-1')
+    expect((await service.list(KEY, { force: true })).machines).toHaveLength(1)
+
+    referenced.clear()
+    expect((await service.list(KEY, { force: true })).machines).toEqual([])
+  })
+
   it('does not retry when the endpoint is unchanged', async () => {
     const { service, sshTargets } = await setup({
       list: inventory([machine()]),

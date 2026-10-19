@@ -61,13 +61,16 @@ function broadcast(channel: 'machines:changed' | 'machines:progress', payload: u
 }
 
 /** Providers run in this process, with this desktop's ssh config and credentials. */
-export function createDesktopMachineService(
-  userDataPath: string,
-  pluginService: PluginService | undefined,
+export function createDesktopMachineService(options: {
+  userDataPath: string
+  pluginService?: PluginService
   isEnabled: () => boolean
-): MachineService {
+  isHostReferenced: (hostId: string) => boolean
+}): MachineService {
+  const { userDataPath, pluginService, isEnabled, isHostReferenced } = options
   const service = new MachineService({
     userDataPath,
+    isHostReferenced,
     listProviders: () => listPluginMachineProviders(pluginService),
     onChanged: (snapshot) => broadcast('machines:changed', snapshot),
     onProgress: (event) => broadcast('machines:progress', event),

@@ -19,7 +19,8 @@ import {
   failureOf,
   markGone,
   markUnreachable,
-  patchRecord
+  patchRecord,
+  pruneGoneRecords
 } from './machine-inventory-records'
 import {
   MachineProviderClient,
@@ -37,6 +38,8 @@ export type MachineServiceDeps = MachineProviderClientDeps & {
   sshTargets: MachineSshTargets
   pairing: MachinePairing
   removeSshTarget: (id: string) => Promise<void>
+  /** Whether a repo or workspace on this host runs on an execution host id; prunes gone rows. */
+  isHostReferenced?: (hostId: string) => boolean
   delay?: (ms: number) => Promise<void>
 }
 
@@ -184,9 +187,12 @@ export class MachineService {
         throw new MachineProviderError('invalid-response', 'list did not return an inventory.')
       }
       this.consecutiveFailures.delete(key)
-      this.client.commit(provider, (inventory) =>
+      this.client.commit(provider, (inventory) => {
         applyInventory(inventory, key, response.machines, this.client.now())
-      )
+        if (this.deps.isHostReferenced) {
+          pruneGoneRecords(inventory, this.deps.isHostReferenced)
+        }
+      })
     } catch (error) {
       this.consecutiveFailures.set(key, (this.consecutiveFailures.get(key) ?? 0) + 1)
       this.client.commit(provider, (inventory) => {
