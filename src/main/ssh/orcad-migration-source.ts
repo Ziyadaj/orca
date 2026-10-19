@@ -11,7 +11,10 @@ import type {
   OrcadMigrationManifest
 } from '../../shared/orcad-migration/orcad-migration-manifest'
 import type { OrcadMigrationSourceCutover } from '../../shared/orcad-migration/orcad-migration-source-cutover'
-import type { OrcadMigrationManifestExportOptions } from './orcad-migration-manifest-export'
+import type {
+  OrcadMigrationExport,
+  OrcadMigrationManifestExportOptions
+} from './orcad-migration-manifest-export'
 import type {
   OrcadMigrationFenceResult,
   OrcadMigrationFenceState
@@ -26,6 +29,14 @@ export type OrcadMigrationSourceCutoverPort = {
   releaseFence: (cutover: OrcadMigrationSourceCutover) => Promise<void>
   /** After a proven commit: the source rows stay, hidden, for a downgraded build. */
   retireAfterCommit: (migrationId: string, now?: () => Date) => OrcadMigrationSourceCutover
+  /**
+   * The live fenced source re-exported under the cutover's id, time and destination: the source
+   * stays authoritative until commit, so a replacement carries the drafts the user still has.
+   */
+  exportReplacement: (
+    cutover: OrcadMigrationSourceCutover,
+    options: Pick<OrcadMigrationManifestExportOptions, 'shedDrafts'>
+  ) => OrcadMigrationExport
 }
 
 export type OrcadMigrationFenceAcquireArgs = {

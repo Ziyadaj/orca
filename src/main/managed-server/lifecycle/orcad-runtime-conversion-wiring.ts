@@ -11,9 +11,11 @@ import {
   commitRemoteOrcadMigrationCatalog,
   listRemoteOrcadRepositories,
   readRemoteOrcadMigrationCatalogState,
+  stageRemoteOrcadMigrationBlobChunk,
   stageRemoteOrcadMigrationCatalog,
   stageRemoteOrcadMigrationSnapshotChunk
 } from '../../ssh/orcad-migration-catalog-client'
+import { readRemoteOrcadMigrationCapabilities } from '../../ssh/orcad-migration-destination-capabilities'
 import { censusHostRelayTerminalsFor } from '../../ssh/legacy-relay/ssh-host-relay-census-for-target'
 import type { OrcadManagedConversionArgs } from './orcad-runtime-conversion'
 import type { OrcadServerRepository } from '../../ssh/orcad-migration-repository-link'
@@ -31,9 +33,15 @@ export function orcadMigrationDestinationFor(
   return {
     readState: (manifest) => readRemoteOrcadMigrationCatalogState(pairingCode, manifest, options),
     stage: (manifest) => stageRemoteOrcadMigrationCatalog(pairingCode, manifest, options),
-    commit: (manifest) => commitRemoteOrcadMigrationCatalog(pairingCode, manifest, options),
+    commit: (manifest, expectedBlobs) =>
+      commitRemoteOrcadMigrationCatalog(pairingCode, manifest, {
+        ...options,
+        ...(expectedBlobs ? { expectedBlobs } : {})
+      }),
     abort: (manifest) => abortRemoteOrcadMigrationCatalog(pairingCode, manifest, options),
-    stageChunk: (request) => stageRemoteOrcadMigrationSnapshotChunk(pairingCode, request, options)
+    stageChunk: (request) => stageRemoteOrcadMigrationSnapshotChunk(pairingCode, request, options),
+    readCapabilities: () => readRemoteOrcadMigrationCapabilities(pairingCode, options),
+    stageBlobChunk: (request) => stageRemoteOrcadMigrationBlobChunk(pairingCode, request, options)
   }
 }
 

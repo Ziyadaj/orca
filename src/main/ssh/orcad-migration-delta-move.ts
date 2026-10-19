@@ -45,6 +45,10 @@ import {
 import { currentOrcadSourceFingerprint } from './orcad-retained-source'
 import type { SshTargetOrcadClaims } from './targets/ssh-target-orcad-claims'
 import { orcadMigrationRefusalReason } from './orcad-migration-refusal-reason'
+import {
+  journalOrcadMigrationExport,
+  readsEditorDrafts
+} from './orcad-migration-editor-drafts-cutover'
 import { errorMessage } from '../../shared/error-message'
 
 export type OrcadDeltaMoveArgs = {
@@ -65,7 +69,10 @@ export type OrcadDeltaMoveArgs = {
 export async function runOrcadDeltaMove(args: OrcadDeltaMoveArgs): Promise<OrcadDeltaMoveResult> {
   const { userDataPath, store, target } = args
   const now = args.now ?? (() => new Date())
-  const plan = planOrcadDeltaMove(userDataPath, store, target, { now })
+  // A move to a running server sheds drafts only when that server takes the drafts blob.
+  await args.ensureTunnel()
+  const shedDrafts = await readsEditorDrafts(args.destination)
+  const plan = planOrcadDeltaMove(userDataPath, store, target, { now, shedDrafts })
   // Taken with the manifest, before any await: the baseline must describe what the server receives.
   const planned = currentOrcadSourceFingerprint(store, target)
   if (!plan.resumes && plan.added.length === 0) {
@@ -113,7 +120,7 @@ function journalDelta(
   now: () => Date
 ): OrcadMigrationSourceCutover {
   const timestamp = now().toISOString()
-  const cutover: OrcadMigrationSourceCutover = {
+  return journalOrcadMigrationExport(args.userDataPath, plan, {
     version: ORCAD_MIGRATION_SOURCE_CUTOVER_VERSION,
     migrationId: plan.manifest.migrationId,
     phase: 'source-fenced',
@@ -123,17 +130,13 @@ function journalDelta(
     destinationName: plan.head.destinationName,
     sshTargetId: args.target.id,
     sshTargetGeneration: plan.head.sshTargetGeneration,
-    manifestSha256: plan.manifest.manifestSha256,
     provenPtyIds: terminals.verdict === 'exited' ? terminals.provenPtyIds : [],
     // COMPAT(legacy-relay-bridge): a move leaves relay terminals running for the bridge too.
     ...(terminals.verdict === 'bridged' ? { bridgedPtyIds: terminals.bridgedPtyIds } : {}),
     supersedesMigrationId: plan.head.migrationId,
     // The whole source as the manifest saw it: what the retained rows must keep matching.
-    sourceBaselineFingerprint: planned,
-    manifest: plan.manifest
-  }
-  writeOrcadMigrationSourceCutover(args.userDataPath, cutover)
-  return cutover
+    sourceBaselineFingerprint: planned
+  })
 }
 
 async function commitDelta(

@@ -95,7 +95,9 @@ function serverDestination(): typeof destination {
       const result = server.abortStagedOrcadMigrationCatalog(manifest)
       return result.aborted ? result : { ...result, durableAbsent: true as const }
     },
-    stageChunk: async (request) => server.stageOrcadMigrationSnapshotChunk(request)
+    stageChunk: async (request) => server.stageOrcadMigrationSnapshotChunk(request),
+    readCapabilities: async () => [],
+    stageBlobChunk: async (request) => server.stageOrcadMigrationBlobChunk(request)
   }
 }
 

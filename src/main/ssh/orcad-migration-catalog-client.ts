@@ -28,6 +28,7 @@ import { ORCAD_MIGRATION_CATALOG_RUNTIME_CAPABILITY } from '../../shared/orcad-r
 import { sendRemoteRuntimeRequestWithStatusPreflight } from '../../shared/remote-runtime-client'
 import { REMOTE_RUNTIME_MAX_INBOUND_REQUEST_JSON_BYTES } from '../../shared/remote-runtime-memory-limits'
 import { describeOversizedOrcadMigrationPayload } from './orcad-migration-manifest-export'
+import { declaredOrcadMigrationBlobKinds } from './orcad-migration-editor-drafts-shed'
 import type { RuntimeRpcResponse } from '../../shared/runtime-rpc-envelope'
 import { AUTOMATION_EXTRA_AGENT_ARGS_RUNTIME_CAPABILITY } from '../../shared/protocol-version'
 import { hasExtraAgentArgs } from '../../shared/automation-extra-agent-args'
@@ -258,7 +259,10 @@ async function request(
     requiredOrcadMigrationSourceCapability(manifest.source),
     // A destination without the blob channel would strip the field and commit unchecked.
     (capabilities) => {
-      const unsupported = findUnsupportedMigrationBlobKind(expectedBlobs, capabilities)
+      const unsupported = findUnsupportedMigrationBlobKind(
+        [...expectedBlobs, ...declaredOrcadMigrationBlobKinds(manifest, operation)],
+        capabilities
+      )
       if (unsupported) {
         throw new Error(orcadMigrationBlobKindUnsupportedBlocker(unsupported))
       }

@@ -3,7 +3,10 @@ import { ORCAD_MIGRATION_SSH_RELAY_SOURCE_KIND } from '../../shared/orcad-migrat
 import type { SshTarget } from '../../shared/ssh-types'
 import { collectOrcadMigrationSourceCatalog } from '../persistence/migrating-orcad-catalog/orcad-source-catalog'
 import type { Store } from '../persistence'
-import { createOrcadMigrationManifest } from './orcad-migration-manifest-export'
+import {
+  createOrcadMigrationManifest,
+  exportOrcadMigration
+} from './orcad-migration-manifest-export'
 import { IDENTITY_ORCAD_MIGRATION_PATH_REWRITER } from './orcad-migration-path-rewrite'
 import type {
   OrcadMigrationSource,
@@ -45,7 +48,25 @@ export function sshRelayMigrationCutoverPort(
       ),
     releaseFence: (cutover) => releaseOrcadMigrationFence(deps, cutover),
     retireAfterCommit: (migrationId, now) =>
-      retainOrcadMigrationSource(deps.userDataPath, migrationId, now)
+      retainOrcadMigrationSource(deps.userDataPath, migrationId, now),
+    exportReplacement: (cutover, options) => {
+      const store = deps.freshSource?.() ?? deps.store
+      const target = store.getSshTarget(cutover.sshTargetId)
+      if (!target) {
+        throw new Error('orcad_migration_source_fence_lost')
+      }
+      // The journal binds the generation the fence was taken at.
+      return exportOrcadMigration(
+        store,
+        { ...target, generation: cutover.sshTargetGeneration },
+        {
+          migrationId: cutover.migrationId,
+          destinationEnvironmentId: cutover.destinationEnvironmentId,
+          now: () => new Date(cutover.manifest.createdAt),
+          shedDrafts: options.shedDrafts
+        }
+      )
+    }
   }
 }
 

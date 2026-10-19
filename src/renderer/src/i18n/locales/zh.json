@@ -19497,6 +19497,9 @@
       "pairedServerWorkspace": "此工作区在配对服务器上运行。请使用该服务器的浏览器标签页。"
     }
   },
+  "managedServerMigration": {
+    "draftsStateUnverifiable": "Orca can't confirm this host's migration state, so your unsaved changes stay on this computer. Reconnect to retry."
+  },
   "runtimeRpc": {
     "startupFailure": {
       "unknownCause": "没有其他错误详情可用。",

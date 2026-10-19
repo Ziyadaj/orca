@@ -30,8 +30,15 @@ vi.mock('../../shared/remote-runtime-client', () => ({
   }
 }))
 
-const { commitRemoteOrcadMigrationCatalog, stageRemoteOrcadMigrationBlobChunk } =
-  await import('./orcad-migration-catalog-client')
+const {
+  abortRemoteOrcadMigrationCatalog,
+  commitRemoteOrcadMigrationCatalog,
+  readRemoteOrcadMigrationCatalogState,
+  stageRemoteOrcadMigrationBlobChunk,
+  stageRemoteOrcadMigrationCatalog
+} = await import('./orcad-migration-catalog-client')
+const { readRemoteOrcadMigrationCapabilities } =
+  await import('./orcad-migration-destination-capabilities')
 
 const pairingCode = encodePairingOffer({
   v: PAIRING_OFFER_VERSION,
@@ -168,5 +175,91 @@ describe('orcad migration commit names its blob set', () => {
       })
     ).rejects.toThrow(/^orcad_migration_destination_blob_kind_unsupported:shell-history:/)
     expect(sendRequest).not.toHaveBeenCalled()
+  })
+})
+
+describe('a manifest that sheds drafts into the blob', () => {
+  const declared: OrcadMigrationManifest = {
+    version: ORCAD_MIGRATION_MANIFEST_VERSION,
+    migrationId: 'migration-drafts',
+    createdAt: '2026-10-01T12:00:00.000Z',
+    source: { sshTargetId: 'source', sshTargetGeneration: 1, targetLabel: 'Source' },
+    payload: {
+      repositories: [],
+      projectGroups: [],
+      folderWorkspaces: [],
+      dormantState: {
+        version: 1,
+        worktreeMeta: [],
+        worktreeLineage: [],
+        workspaceLineage: [],
+        sparsePresets: [],
+        retiredWorktreeNames: [],
+        retiredWorktreeNamespaces: [],
+        editorDraftsBlob: {
+          sha256: 'd'.repeat(64),
+          byteLength: 10,
+          entries: [{ worktreeKey: 'repo::/srv', filePath: '/srv/a.ts' }]
+        }
+      }
+    },
+    manifestSha256: 'e'.repeat(64)
+  }
+  const staged = {
+    ok: true,
+    _meta: { runtimeId: 'runtime' },
+    result: {
+      state: 'absent',
+      migrationId: declared.migrationId,
+      manifestSha256: declared.manifestSha256
+    }
+  }
+
+  it('is never staged or committed on a host whose parser would drop the declaration', async () => {
+    // An old-schema host: catalog and blob channel, but no drafts kind.
+    status.capabilities = [
+      ORCAD_MIGRATION_CATALOG_RUNTIME_CAPABILITY,
+      ORCAD_MIGRATION_BLOB_CHANNEL_RUNTIME_CAPABILITY
+    ]
+    sendRequest.mockResolvedValue(staged)
+    await expect(stageRemoteOrcadMigrationCatalog(pairingCode, declared)).rejects.toThrow(
+      /^orcad_migration_destination_blob_kind_unsupported:editor-drafts:/
+    )
+    await expect(commitRemoteOrcadMigrationCatalog(pairingCode, declared)).rejects.toThrow(
+      /^orcad_migration_destination_blob_kind_unsupported:editor-drafts:/
+    )
+    expect(sendRequest).not.toHaveBeenCalled()
+
+    // Recovery still asks and aborts by the same signed manifest.
+    await readRemoteOrcadMigrationCatalogState(pairingCode, declared)
+    sendRequest.mockResolvedValueOnce({ ...staged, result: { ...staged.result, aborted: true } })
+    await abortRemoteOrcadMigrationCatalog(pairingCode, declared)
+    expect(sendRequest.mock.calls.map((call) => call[1])).toEqual([
+      'orcad.migration.catalogState',
+      'orcad.migration.abortCatalog'
+    ])
+  })
+
+  it('goes to a host that advertises the drafts kind, and reads its capabilities', async () => {
+    status.capabilities = [
+      ORCAD_MIGRATION_CATALOG_RUNTIME_CAPABILITY,
+      ORCAD_MIGRATION_BLOB_CHANNEL_RUNTIME_CAPABILITY,
+      'orcad.migration-blob.editor-drafts.v1'
+    ]
+    sendRequest.mockResolvedValue(staged)
+    await stageRemoteOrcadMigrationCatalog(pairingCode, declared)
+    expect(sendRequest).toHaveBeenLastCalledWith(
+      expect.anything(),
+      'orcad.migration.stageCatalog',
+      { manifest: declared }
+    )
+    sendRequest.mockResolvedValue({
+      ok: true,
+      _meta: { runtimeId: 'runtime' },
+      result: { capabilities: status.capabilities }
+    })
+    await expect(readRemoteOrcadMigrationCapabilities(pairingCode)).resolves.toEqual(
+      status.capabilities
+    )
   })
 })

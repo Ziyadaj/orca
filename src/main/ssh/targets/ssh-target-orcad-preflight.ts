@@ -62,7 +62,11 @@ export function preflightOrcadMigrationExport(
     })
   }
   blockers.push(
-    ...collectUntransferredDependentBlockers(store, createOrcadMigrationManifest(store, target))
+    ...collectUntransferredDependentBlockers(
+      store,
+      // Before the server exists: a conversion deploys this build's server, which takes the blob.
+      createOrcadMigrationManifest(store, target, { shedDrafts: true })
+    )
   )
   return {
     targetId,

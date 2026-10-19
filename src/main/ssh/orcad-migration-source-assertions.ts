@@ -24,7 +24,9 @@ export function assertOrcadMigrationSourceUnchanged(
   const current = createOrcadMigrationManifest(context.store, target, {
     migrationId: cutover.migrationId,
     destinationEnvironmentId: cutover.destinationEnvironmentId,
-    now: () => new Date(cutover.manifest.createdAt)
+    now: () => new Date(cutover.manifest.createdAt),
+    // Drafts are left out of the comparison, so shedding only keeps a large session under the cap.
+    shedDrafts: true
   })
   if (frozenSourceDigest(current) !== frozenSourceDigest(cutover.manifest)) {
     throw new Error('orcad_migration_source_changed')
@@ -53,7 +55,7 @@ export function assertOrcadMigrationSourceUnchanged(
  * The manifest minus what the UI rewrites as the user works (tabs, focus, routing): the server
  * gets those as journaled, and a tab reorder mid-conversion must not fail the move.
  */
-function frozenSourceDigest(manifest: OrcadMigrationManifest): string {
+export function frozenSourceDigest(manifest: OrcadMigrationManifest): string {
   const { manifestSha256: _digest, payload, ...rest } = manifest
   const {
     version: _version,
@@ -61,6 +63,8 @@ function frozenSourceDigest(manifest: OrcadMigrationManifest): string {
     clientState: _client,
     // Retained for the transfer, so a tab closed mid-move still sends its journaled bytes.
     terminalScrollbackSnapshots: _snapshots,
+    // Follows the session: which drafts it sheds is the session's, and the journal holds the bytes.
+    editorDraftsBlob: _drafts,
     ...dormant
   } = payload.dormantState ?? {}
   // Export omits an empty dormant payload, so UI state alone can make one appear.

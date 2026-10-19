@@ -17,8 +17,10 @@ import type { SshTarget } from '../../shared/ssh-types'
 import type { Store } from '../persistence'
 import { collectOrcadMigrationSourceCatalog } from '../persistence/migrating-orcad-catalog/orcad-source-catalog'
 import { listOrcadMigrationCutoverChainForTarget } from './orcad-migration-cutover-journal'
+import type { OrcadMigrationEditorDraftsBody } from './orcad-migration-editor-drafts-shed'
 import {
   createOrcadMigrationManifest,
+  exportOrcadMigration,
   orcadMigrationCatalogIds,
   type OrcadMigrationCatalogIds
 } from './orcad-migration-manifest-export'
@@ -91,7 +93,9 @@ export function orcadSourceStoreWithout(
 ): OrcadDeltaSourceStore {
   const ownedNow = createOrcadMigrationManifest(store, target, {
     destinationEnvironmentId,
-    onlyCatalog: owned
+    onlyCatalog: owned,
+    // Only scopes the view, so a large session's drafts must not trip the manifest cap here.
+    shedDrafts: true
   })
   const view = store.createOrcadMigrationDeltaView(ownedNow)
   return {
@@ -106,6 +110,8 @@ export function orcadSourceStoreWithout(
 
 export type OrcadDeltaMovePlan = OrcadDeltaMovePreview & {
   manifest: OrcadMigrationManifest
+  /** The drafts a new manifest shed; a resumed one's are already journaled. */
+  editorDrafts: OrcadMigrationEditorDraftsBody | null
   moved: OrcadMigrationSourceCutover[]
   /** The retained migration a new delta supersedes. */
   head: OrcadMigrationSourceCutover
@@ -119,7 +125,7 @@ export function planOrcadDeltaMove(
   userDataPath: string,
   store: Store,
   target: SshTarget,
-  options: { migrationId?: string; now?: () => Date } = {}
+  options: { migrationId?: string; now?: () => Date; shedDrafts?: boolean } = {}
 ): OrcadDeltaMovePlan {
   const environmentId = target.orcadFence?.environmentId
   if (!environmentId || !target.orcadFence?.sourceChangedAt) {
@@ -137,13 +143,15 @@ export function planOrcadDeltaMove(
     throw new Error('orcad_delta_no_retained_migration')
   }
   const source = orcadDeltaSourceStore(store, target, moved, resumes?.manifest)
-  const manifest =
-    resumes?.manifest ??
-    createOrcadMigrationManifest(source, target, {
-      migrationId: options.migrationId,
-      now: options.now,
-      destinationEnvironmentId: environmentId
-    })
+  const exported = resumes
+    ? { manifest: resumes.manifest, editorDrafts: null }
+    : exportOrcadMigration(source, target, {
+        migrationId: options.migrationId,
+        now: options.now,
+        destinationEnvironmentId: environmentId,
+        shedDrafts: options.shedDrafts
+      })
+  const { manifest } = exported
   const current = collectOrcadMigrationSourceCatalog(store, target)
   return {
     sshTargetId: target.id,
@@ -155,6 +163,7 @@ export function planOrcadDeltaMove(
     ),
     blockers: collectUntransferredDependentBlockers(source, manifest),
     manifest,
+    editorDrafts: exported.editorDrafts,
     moved,
     head,
     resumes,

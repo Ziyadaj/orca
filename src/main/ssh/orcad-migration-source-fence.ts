@@ -14,12 +14,12 @@ import {
   type OrcadMigrationSourceCutover
 } from '../../shared/orcad-migration/orcad-migration-source-cutover'
 import type { SshTarget } from '../../shared/ssh-types'
-import { createOrcadMigrationManifest } from './orcad-migration-manifest-export'
+import { exportOrcadMigration } from './orcad-migration-manifest-export'
 import {
   findOrcadMigrationSourceCutoverForTarget,
-  removeOrcadMigrationSourceCutover,
-  writeOrcadMigrationSourceCutover
+  removeOrcadMigrationSourceCutover
 } from './orcad-migration-cutover-journal'
+import { journalOrcadMigrationExport } from './orcad-migration-editor-drafts-cutover'
 import {
   confirmOrcadMigrationTerminalsUnderFence,
   type OrcadMigrationTerminalVerdict
@@ -142,14 +142,19 @@ export async function fenceOrcadMigrationSource(args: {
   }
   const generation = args.claims.ensureGeneration(target.id)
   const now = (args.now ?? (() => new Date()))().toISOString()
-  const manifest = createOrcadMigrationManifest(
+  const exported = exportOrcadMigration(
     args.store,
     { ...target, generation },
-    { migrationId: randomUUID(), destinationEnvironmentId: args.destinationEnvironmentId }
+    {
+      migrationId: randomUUID(),
+      destinationEnvironmentId: args.destinationEnvironmentId,
+      // The server doesn't exist yet; the conversion deploys this build's, which takes the blob.
+      shedDrafts: true
+    }
   )
-  const cutover: OrcadMigrationSourceCutover = {
+  const cutover = journalOrcadMigrationExport(args.userDataPath, exported, {
     version: ORCAD_MIGRATION_SOURCE_CUTOVER_VERSION,
-    migrationId: manifest.migrationId,
+    migrationId: exported.manifest.migrationId,
     phase: 'source-fenced',
     startedAt: now,
     updatedAt: now,
@@ -157,13 +162,10 @@ export async function fenceOrcadMigrationSource(args: {
     destinationName: args.destinationName,
     sshTargetId: target.id,
     sshTargetGeneration: generation,
-    manifestSha256: manifest.manifestSha256,
     provenPtyIds: proof.verdict === 'exited' ? proof.provenPtyIds : [],
-    ...(proof.verdict === 'bridged' ? { bridgedPtyIds: proof.bridgedPtyIds } : {}),
-    // Taken with the export, before any commit is possible: the only proof of what the server holds.
-    manifest
-  }
-  writeOrcadMigrationSourceCutover(args.userDataPath, cutover)
+    ...(proof.verdict === 'bridged' ? { bridgedPtyIds: proof.bridgedPtyIds } : {})
+  })
+  // Journaled with the export, before any commit is possible: the only proof of what the server holds.
   args.claims.fenceForMigration(target.id, args.destinationEnvironmentId, generation)
   await args.claims.flush(args.signal)
   // Why again: a terminal may have started between the proof and the fence.

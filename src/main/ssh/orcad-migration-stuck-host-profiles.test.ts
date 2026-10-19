@@ -406,8 +406,10 @@ describe('"Move anyway"', () => {
     }
     const session = result.cutover.manifest.payload.dormantState?.workspaceSession
     expect(session?.tabsByWorktree[worktreeId]?.map((tab) => tab.id)).toEqual(['tab-1'])
-    expect(session?.openFilesByWorktree?.[worktreeId]).toEqual([
-      expect.objectContaining({ dirtyDraftContent: 'desktop draft' })
+    // A conversion sheds the draft into the blob the manifest declares.
+    expect(session?.openFilesByWorktree?.[worktreeId]?.[0]).not.toHaveProperty('dirtyDraftContent')
+    expect(result.cutover.manifest.payload.dormantState?.editorDraftsBlob?.entries).toEqual([
+      { worktreeKey: worktreeId, filePath: '/home/dev/src/project-0/notes.md' }
     ])
   })
 

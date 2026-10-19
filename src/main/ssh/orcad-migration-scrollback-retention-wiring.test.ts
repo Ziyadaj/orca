@@ -16,6 +16,10 @@ vi.mock('./orcad-migration-cutover-journal', () => ({
   }
 }))
 
+vi.mock('./orcad-migration-editor-drafts-sidecar', () => ({
+  pruneOrcadMigrationEditorDraftsSidecars: () => {}
+}))
+
 const { installOrcadMigrationScrollbackRetention } =
   await import('./orcad-migration-scrollback-retention-wiring')
 

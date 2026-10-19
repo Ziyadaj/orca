@@ -22,9 +22,12 @@ import {
   abortOrcadMigrationCutover,
   type OrcadMigrationDestinationCatalog
 } from './orcad-migration-cutover-coordinator'
-import { writeOrcadMigrationSourceCutover } from './orcad-migration-cutover-journal'
 import { orcadSourceStoreWithout, type OrcadDeltaSourceStore } from './orcad-migration-delta-plan'
-import { createOrcadMigrationManifest } from './orcad-migration-manifest-export'
+import { exportOrcadMigration } from './orcad-migration-manifest-export'
+import {
+  journalOrcadMigrationExport,
+  readsEditorDrafts
+} from './orcad-migration-editor-drafts-cutover'
 import type { OrcadMigrationSourceCutoverPort } from './orcad-migration-source'
 import { sshRelayMigrationCutoverPort } from './orcad-migration-ssh-relay-source'
 import { orcadCatalogFingerprint } from './orcad-retained-source'
@@ -288,17 +291,16 @@ export async function linkServerHeldRepositories(args: {
   if (!view || !target) {
     throw new Error('orcad_migration_source_fence_lost')
   }
-  const manifest = createOrcadMigrationManifest(view, target, {
+  const exported = exportOrcadMigration(view, target, {
     migrationId: cutover.migrationId,
     destinationEnvironmentId: cutover.destinationEnvironmentId,
-    now: () => new Date(cutover.manifest.createdAt)
+    now: () => new Date(cutover.manifest.createdAt),
+    shedDrafts: await readsEditorDrafts(args.destination)
   })
-  const relinked: OrcadMigrationSourceCutover = {
+  const relinked: Omit<OrcadMigrationSourceCutover, 'manifest' | 'manifestSha256'> = {
     ...cutover,
     phase: 'source-fenced',
     updatedAt: (args.now ?? (() => new Date()))().toISOString(),
-    manifestSha256: manifest.manifestSha256,
-    manifest,
     ...linkedIds,
     // The retained rows still hold the linked projects, so the baseline is the whole fenced source.
     sourceBaselineFingerprint:
@@ -308,10 +310,16 @@ export async function linkServerHeldRepositories(args: {
     { userDataPath, store: args.store, claims: args.claims, destination: args.destination, source },
     cutover.migrationId,
     // Why keep the fence: the move goes on to the same server, now without the linked projects.
-    async () => writeOrcadMigrationSourceCutover(userDataPath, relinked)
+    async () => {
+      journalOrcadMigrationExport(userDataPath, exported, relinked)
+    }
   )
   if (aborted.outcome !== 'released') {
     throw new Error(aborted.code)
   }
-  return relinked
+  return {
+    ...relinked,
+    manifestSha256: exported.manifest.manifestSha256,
+    manifest: exported.manifest
+  }
 }

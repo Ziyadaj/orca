@@ -19497,6 +19497,9 @@
       "workspaces": "Espaces de travail"
     }
   },
+  "managedServerMigration": {
+    "draftsStateUnverifiable": "Orca can't confirm this host's migration state, so your unsaved changes stay on this computer. Reconnect to retry."
+  },
   "runtimeRpc": {
     "startupFailure": {
       "unknownCause": "Aucun détail supplémentaire sur l'erreur n'était disponible.",

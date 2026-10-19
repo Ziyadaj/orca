@@ -19497,6 +19497,9 @@
       "pairedServerWorkspace": "このワークスペースはペアリングされたサーバーで実行されています。そのサーバーのブラウザタブを使用してください。"
     }
   },
+  "managedServerMigration": {
+    "draftsStateUnverifiable": "Orca can't confirm this host's migration state, so your unsaved changes stay on this computer. Reconnect to retry."
+  },
   "runtimeRpc": {
     "startupFailure": {
       "unknownCause": "これ以上のエラー詳細は取得できませんでした。",

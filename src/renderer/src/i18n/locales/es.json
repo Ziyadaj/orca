@@ -19485,6 +19485,9 @@
       "pairedServerWorkspace": "Este espacio de trabajo se ejecuta en un servidor emparejado. Usa las pestañas del navegador de ese servidor."
     }
   },
+  "managedServerMigration": {
+    "draftsStateUnverifiable": "Orca can't confirm this host's migration state, so your unsaved changes stay on this computer. Reconnect to retry."
+  },
   "runtimeRpc": {
     "startupFailure": {
       "unknownCause": "No additional error details were available.",

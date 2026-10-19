@@ -19497,6 +19497,9 @@
       "pairedServerWorkspace": "이 워크스페이스는 페어링된 서버에서 실행됩니다. 해당 서버의 브라우저 탭을 사용하세요."
     }
   },
+  "managedServerMigration": {
+    "draftsStateUnverifiable": "Orca can't confirm this host's migration state, so your unsaved changes stay on this computer. Reconnect to retry."
+  },
   "runtimeRpc": {
     "startupFailure": {
       "unknownCause": "No additional error details were available.",
