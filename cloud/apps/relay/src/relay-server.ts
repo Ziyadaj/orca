@@ -876,6 +876,10 @@ export function createRelayServer(
     dataSockets.close()
     store.resumeAudit.stop()
   })
+  const resumeAuditDropped = (): number => {
+    const drops = store.resumeAudit.drops()
+    return drops.overflow + drops.aged
+  }
   const runtimeCounts = () => {
     const ledgerCounts = connectionLedger?.counts()
     return {
@@ -883,6 +887,7 @@ export function createRelayServer(
       preAuthConnections,
       ...sessions.runtimeCounts(),
       queuedBytes: queuedBytes.current(),
+      ...(config.role === 'cell' ? { resumeAuditDropped: resumeAuditDropped() } : {}),
       ...(ledgerCounts
         ? {
             inFlightConnections: ledgerCounts.inFlightConnections,

@@ -35,6 +35,7 @@ import {
 import type { StructuredAgentSessionLogger } from './structured-agent-session-logger'
 import { evictStructuredAgentSession } from './structured-agent-session-eviction'
 import type { StructuredAgentSessionHostRuntimeState } from './structured-agent-session-host-runtime-state'
+import type { StructuredAgentSessionStartFlights } from './structured-agent-session-start-flight'
 import type { StructuredAgentSessionStartupAttempts } from './structured-agent-session-startup-attempt'
 
 /** How the child's root went: the close this host asked for, or a death of its own. */
@@ -45,7 +46,6 @@ export type StructuredAgentSessionChildExit = {
   failure?: SubmissionRejectionFact
   /** Host receipt of the exit: the end time of a turn it interrupted. */
   observedAt?: number
-  startupUnproven?: true
   startupUnanswered?: true
 }
 
@@ -75,6 +75,8 @@ export type StructuredAgentSessionChildExitContext<
   wakeDelivery?: (sessionId: string) => void
   /** An ended child's start, if still open, has nothing left to time. */
   startupAttempts?: Pick<StructuredAgentSessionStartupAttempts, 'childEnded'>
+  /** The start in flight outside the serialize, whose child is not on record until it publishes. */
+  startFlights?: Pick<StructuredAgentSessionStartFlights, 'deferExit'>
   abortOpen?: (sessionId: string) => void
   serialize: <T>(sessionId: string, task: () => Promise<T>) => Promise<T>
   now: () => number
@@ -102,18 +104,33 @@ export function settleStructuredAgentSessionChildExit<
 ): Promise<void> {
   return context.serialize(event.sessionId, async () => {
     const child = context.sessions.get(event.sessionId)?.child
+    // An exit can land between a start's spawn and its publish: the publish settles it.
+    if (!child && context.startFlights?.deferExit(event)) {
+      return
+    }
     if (!child || child.fence !== event.fence || child.generation !== event.acquisitionGeneration) {
       return
     }
-    await endExitedStructuredAgentSessionChildUnderSerialize(context, event.sessionId, child, {
-      expected: event.cause === 'requested-close',
-      reason: event.reason,
-      ...(event.failure ? { failure: event.failure } : {}),
-      ...(event.observedAt === undefined ? {} : { observedAt: event.observedAt }),
-      ...(event.startupUnproven ? { startupUnproven: event.startupUnproven } : {}),
-      ...(event.startupUnanswered ? { startupUnanswered: event.startupUnanswered } : {})
-    })
+    await endExitedStructuredAgentSessionChildUnderSerialize(
+      context,
+      event.sessionId,
+      child,
+      structuredAgentSessionEndedEventExit(event)
+    )
   })
+}
+
+/** The exit an adapter's report of it proves. */
+export function structuredAgentSessionEndedEventExit(
+  event: StructuredAgentSessionEndedEvent
+): StructuredAgentSessionChildExit {
+  return {
+    expected: event.cause === 'requested-close',
+    reason: event.reason,
+    ...(event.failure ? { failure: event.failure } : {}),
+    ...(event.observedAt === undefined ? {} : { observedAt: event.observedAt }),
+    ...(event.startupUnanswered ? { startupUnanswered: event.startupUnanswered } : {})
+  }
 }
 
 /** Ends the record of a child whose exit this host saw or proved; a no-op once it has left. */
@@ -135,7 +152,7 @@ export async function endExitedStructuredAgentSessionChildUnderSerialize<
   const observedAt = exit.observedAt ?? context.now()
   // The host's own phase decides, so a provider that omits the flag still gets a start that
   // failed told as one: the row says so.
-  const exitedDuringStartup = exit.startupUnproven === true || child.phase === 'starting'
+  const exitedDuringStartup = child.phase === 'starting'
   if (child.phase === 'starting') {
     context.abortOpen?.(sessionId)
   }

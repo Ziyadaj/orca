@@ -12,7 +12,6 @@ import {
   sanitizeTerminalLayoutPaneTitles
 } from '../../../../shared/terminal-pane-title-sanitization'
 import type { TerminalPaneStartupController } from './use-terminal-pane-startup-actions'
-import type { PaneLayoutEditIntent } from '../../../../shared/rpc-contract/session-tabs-schemas-params'
 import { ORCA_LAYOUT_OWNER_IS_MAIN } from '../../../../shared/layout-owner-switch'
 import { sendLayoutCommandToOwner } from '@/runtime/layout-owner-command'
 import { notePendingPaneTitleRename } from '@/runtime/pending-pane-title-renames'
@@ -43,7 +42,7 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
     chatOwnerRef.current = { chatLeafId, isChatViewMode }
   }, [chatLeafId, isChatViewMode])
   const persistLayoutSnapshot = useCallback(
-    (intent?: PaneLayoutEditIntent): void => {
+    (): void => {
       const manager = managerRef.current
       const container = containerRef.current
       if (!manager || !container) {
@@ -138,8 +137,7 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
         remotePaneLayoutPusherRef.current?.push({
           worktreeId,
           tabId,
-          layout: clearedEveryTitle ? { ...layout, titlesByLeafId: {} } : layout,
-          intent
+          layout: clearedEveryTitle ? { ...layout, titlesByLeafId: {} } : layout
         })
       }
       for (const leafId of currentLeafIds) {
@@ -189,7 +187,7 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
         removedTitleLeafIdsRef.current.add(leafId)
       }
       // Why: every caller is a user clearing a pane title.
-      persistLayoutSnapshot('gesture')
+      persistLayoutSnapshot()
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Preserve the pre-split dependency contract.
     [persistLayoutSnapshot]
@@ -202,7 +200,7 @@ export function useTerminalPaneLayoutPersistence(controller: TerminalPaneStartup
       if (leafId) {
         removedTitleLeafIdsRef.current.delete(leafId)
       }
-      persistLayoutSnapshot('gesture')
+      persistLayoutSnapshot()
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- Refs are stable.
     [persistLayoutSnapshot]

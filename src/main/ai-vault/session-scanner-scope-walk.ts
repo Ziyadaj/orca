@@ -1,7 +1,6 @@
 import { createAiVaultScopeCwdMatcher } from '../../shared/ai-vault-scope-cwd-match'
 import type { AiVaultScanIssue, AiVaultSession } from '../../shared/ai-vault-types'
 import type { ExecutionHostId } from '../../shared/execution-host'
-import { noteAiVaultScanReading } from './ai-vault-scan-progress'
 import { yieldToEventLoop } from '../../shared/event-loop-yield'
 import { throwIfAiVaultScanCancelled } from './ai-vault-scan-cancellation'
 import {
@@ -71,7 +70,6 @@ export async function scanInScopeSessions(args: ScopeScanArgs): Promise<AiVaultS
   if (candidates.length === 0) {
     return walked
   }
-  noteAiVaultScanReading(args.options.signal, candidates.length)
   // Parse every in-scope candidate (limit === candidate count never early-stops).
   const bucketed = await parseSessionCandidates({
     candidates,

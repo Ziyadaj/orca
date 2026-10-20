@@ -5,6 +5,7 @@
 // recording it would make the durable handle chain lie about what this session
 // actually proved.
 
+import { throwIfSignalAborted } from '../../shared/abort-signal-reason'
 import {
   isCodexAppServerRequestError,
   type CodexAppServerConnection
@@ -74,7 +75,8 @@ export async function openCodexThread(
     /** Env every command the agent runs must see, whatever the user's shell environment policy. */
     commandEnv?: Record<string, string>
   },
-  timeoutMs: number | undefined
+  timeoutMs: number | undefined,
+  signal?: AbortSignal
 ): Promise<CodexOpenedThread> {
   const resumeThreadId = launch.resumeThreadId
   const config = { ...launch.threadConfig, ...shellEnvironmentSetConfig(launch.commandEnv) }
@@ -83,12 +85,14 @@ export async function openCodexThread(
     ...launch.permissionPolicy,
     ...(Object.keys(config).length > 0 ? { config } : {})
   }
-  const startThread = (): Promise<unknown> =>
-    connection.request(
+  const startThread = (): Promise<unknown> => {
+    throwIfSignalAborted(signal)
+    return connection.request(
       'thread/start',
       { ...threadSettings, ...(launch.model ? { model: launch.model } : {}) },
       { timeoutMs }
     )
+  }
   let supersededThreadId: string | undefined
   let opened: unknown
   if (!resumeThreadId) {
@@ -101,12 +105,14 @@ export async function openCodexThread(
       ...(launch.resumePath ? { path: launch.resumePath } : {})
     }
     try {
+      throwIfSignalAborted(signal)
       opened = await connection.request(
         'thread/resume',
         { ...resumeParams, excludeTurns: true },
         { timeoutMs }
       )
     } catch (error) {
+      throwIfSignalAborted(signal)
       if (!launch.supersedeIfUnsaved || !isCodexNoRolloutError(error, resumeThreadId)) {
         throw error
       }

@@ -12,6 +12,7 @@ import {
 } from './codex-app-server-session'
 import { createCodexAppServerRecordDispatcher } from './codex-app-server-record-dispatch'
 import { createProviderRecordReader } from '../provider-process/provider-record-reader'
+import { withProviderRequestTimeout } from '../provider-process/provider-request-timeout'
 import type {
   CodexAppServerConnection,
   CodexAppServerConnectionHandlers
@@ -36,20 +37,16 @@ export type CodexAppServerLaunch = ProviderProcessLaunch
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 
-/**
- * Spawns `codex app-server`, completes the initialize handshake, and returns a
- * connection that stays open until `close()`. Rejects — after reaping the child
- * — when the handshake cannot complete.
- */
-export async function openCodexAppServerConnection(
+/** Builds the transport so an owner can record its process before initialization. */
+async function connectCodexAppServer(
   launch: CodexAppServerLaunch,
   handlers: CodexAppServerConnectionHandlers = {},
-  spawnImpl: PipedProcessSpawner = spawnProcess
+  spawnImpl: PipedProcessSpawner,
+  initialize: boolean
 ): Promise<CodexAppServerConnection> {
   const managed = spawnManagedProviderProcess(launch, {
     spawnImpl,
-    site: 'codex-app-server-teardown',
-    ...(handlers.onOutput ? { onOutput: handlers.onOutput } : {})
+    site: 'codex-app-server-teardown'
   })
   const { child } = managed
 
@@ -169,7 +166,12 @@ export async function openCodexAppServerConnection(
       // so only the individual call can carry a deadline.
       const timer = setTimeout(() => {
         dispatcher.timeOutPending(id)
-        reject(new CodexAppServerTimeoutError(`codex app-server ${method} exceeded ${timeoutMs}ms`))
+        reject(
+          withProviderRequestTimeout(
+            new CodexAppServerTimeoutError(`codex app-server ${method} exceeded ${timeoutMs}ms`),
+            { method, timeoutMs }
+          )
+        )
       }, timeoutMs)
       dispatcher.addPending(id, { method, resolve, reject, timer, onReply: options.onReply })
       try {
@@ -234,8 +236,10 @@ export async function openCodexAppServerConnection(
     if (child.pid !== undefined) {
       await handlers.onSpawned?.(child.pid)
     }
-    handshaking = true
-    await initializeCodexAppServerConnection(connection)
+    if (initialize) {
+      handshaking = true
+      await initializeCodexAppServerConnection(connection)
+    }
   } catch (error) {
     if ((await close()) !== true) {
       throw new CodexAppServerHandshakeExitUnprovenError(connection, error)
@@ -247,4 +251,21 @@ export async function openCodexAppServerConnection(
       : buildExitError(error instanceof Error ? error : new Error(String(error)))
   }
   return connection
+}
+
+/** Publishes the transport after its process identity is recorded, before initialization. */
+export function spawnCodexAppServerConnection(
+  launch: CodexAppServerLaunch,
+  handlers: CodexAppServerConnectionHandlers = {},
+  spawnImpl: PipedProcessSpawner = spawnProcess
+): Promise<CodexAppServerConnection> {
+  return connectCodexAppServer(launch, handlers, spawnImpl, false)
+}
+
+export function openCodexAppServerConnection(
+  launch: CodexAppServerLaunch,
+  handlers: CodexAppServerConnectionHandlers = {},
+  spawnImpl: PipedProcessSpawner = spawnProcess
+): Promise<CodexAppServerConnection> {
+  return connectCodexAppServer(launch, handlers, spawnImpl, true)
 }

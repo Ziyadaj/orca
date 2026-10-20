@@ -81,13 +81,18 @@ export abstract class AgentHookServerStatusApplication extends AgentHookServerSt
       isReplay: _isReplay,
       ...payload
     } = previous
-    const refreshed = deriveCliWriterTopology({
-      ...payload,
-      receivedAt: now,
-      evidenceObservedAt: now,
-      stateStartedAt,
-      observation: this.stampObservation(payload, 'osc', now)
-    }, mutationBefore ?? previous, this.cliWriterExecutionMatches, newRun)
+    const refreshed = deriveCliWriterTopology(
+      {
+        ...payload,
+        receivedAt: now,
+        evidenceObservedAt: now,
+        stateStartedAt,
+        observation: this.stampObservation(payload, 'osc', now)
+      },
+      mutationBefore ?? previous,
+      this.cliWriterExecutionMatches,
+      newRun
+    )
     const firstRuntimeObservation = !this.runtimeObservedStatusPaneKeys.has(refreshed.paneKey)
     this.runtimeObservedStatusPaneKeys.add(refreshed.paneKey)
     if (!this.writeLegacyStatusRow(refreshed)) {
