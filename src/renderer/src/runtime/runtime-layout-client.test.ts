@@ -206,46 +206,6 @@ describe.each(targets)('runtime layout client over the %s transport', (_name, ta
     expect(positions).toEqual([3, 4, 5, 7])
   })
 
-  it.skipIf(target.kind === 'local')(
-    'after a lost stream, keeps the last state and never reopens it',
-    async () => {
-      subscribe()
-      const first = await opened(1)
-      first.send(
-        snapshot([
-          { key: 'a', layout: layout('a', ['t1', 't2']) },
-          { key: 'b', layout: layout('b') }
-        ])
-      )
-      first.drop()
-      expect(first.unsubscribed).toBe(true)
-      expect(status).toEqual({ state: 'lost' })
-      await vi.advanceTimersByTimeAsync(60_000)
-      expect(host.streams).toHaveLength(1)
-      // The last state stays; a late frame from the dropped stream changes nothing.
-      first.send({ type: 'removed', key: 'a' })
-      expect(cache).toEqual({ a: layout('a', ['t1', 't2']), b: layout('b') })
-    }
-  )
-
-  it.each([
-    ['a failed subscribe', () => host.rejectNextSubscribe(), async () => {}],
-    ['an error frame', () => {}, async () => (await opened(1)).fail('stream failed')]
-  ])('stops after %s without retrying', async (_case, before, fail) => {
-    if (target.kind === 'local') {
-      return
-    }
-    before()
-    const subscription = subscribe()
-    await fail()
-    await vi.advanceTimersByTimeAsync(60_000)
-    expect(status).toEqual({ state: 'lost' })
-    expect(host.streams.length).toBeLessThanOrEqual(1)
-    expect(host.streams.every((stream) => stream.unsubscribed)).toBe(true)
-    subscription.close()
-    expect(status).toEqual({ state: 'lost' })
-  })
-
   it.each([
     [
       'method_not_found',
@@ -388,10 +348,7 @@ describe.each(targets)(
       await vi.advanceTimersByTimeAsync(999)
       expect(host.streams).toHaveLength(4)
       await vi.advanceTimersByTimeAsync(1)
-      expect(host.streams).toHaveLength(target.kind === 'local' ? 5 : 4)
-      if (target.kind !== 'local') {
-        return
-      }
+      expect(host.streams).toHaveLength(5)
       // Still failing: the reopened stream's snapshot keeps the backoff growing.
       const fifth = await opened(5)
       fifth.send(snapshot('epoch-1', 3, ['a']))
@@ -412,9 +369,6 @@ describe.each(targets)(
     })
 
     it('starts the backoff over after one resync, once the stream is healthy again', async () => {
-      if (target.kind !== 'local') {
-        return
-      }
       const first = await opened(1)
       first.send(snapshot('epoch-1', 3, ['a']))
       first.send(regrouped('epoch-1', 5, 'a', ['t1']))
@@ -467,7 +421,7 @@ describe.each(targets)(
   }
 )
 
-describe('the local layout stream after a loss', () => {
+describe.each(targets)('the %s layout stream after a loss', (_name, target) => {
   let host: FakeHost
   let cache: WorkspaceLayoutCache
   let statuses: RuntimeLayoutStreamStatus[]
@@ -475,7 +429,7 @@ describe('the local layout stream after a loss', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    host = installFakeHost({ kind: 'local' })
+    host = installFakeHost(target)
     cache = EMPTY_WORKSPACE_LAYOUT_CACHE
     statuses = []
   })
@@ -488,7 +442,7 @@ describe('the local layout stream after a loss', () => {
 
   const subscribe = () =>
     subscribeRuntimeLayout(
-      { kind: 'local' },
+      target,
       {},
       (frame) => {
         cache = applyLayoutFrame(cache, frame)
@@ -548,6 +502,15 @@ describe('the local layout stream after a loss', () => {
     expect(statuses.at(-1)).toEqual({ state: 'closed' })
     await vi.advanceTimersByTimeAsync(60_000)
     expect(host.streams).toHaveLength(2)
+  })
+
+  it('reopens after an error frame', async () => {
+    subscribe()
+    ;(await opened(1)).fail('stream failed')
+    expect(statuses.at(-1)).toEqual({ state: 'lost' })
+    await vi.advanceTimersByTimeAsync(1_000)
+    ;(await opened(2)).send(snapshot([{ key: 'a', layout: layout('a') }]))
+    expect(statuses.at(-1)).toEqual({ state: 'live' })
   })
 
   it('never reopens after a refusal', async () => {

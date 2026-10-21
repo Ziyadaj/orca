@@ -132,7 +132,7 @@
       "description": "Choisissez l’apparence et le comportement des chats.",
       "names": {
         "title": "Noms des chats",
-        "description": "Utilisez un agent pour nommer les nouveaux chats à partir de leur premier message. Sans nom généré, ils restent Claude Chat ou Codex Chat.",
+        "description": "Utilisez un agent pour nommer les nouveaux chats à partir de leur premier message. En attendant un nom généré, le chat affiche son premier message.",
         "enable": "Nommer automatiquement les chats",
         "recipe": "Nom du chat",
         "recipeDescription": "Génère un nom court à partir du premier message d’un nouveau chat.",
@@ -1379,6 +1379,12 @@
       }
     },
     "components": {
+      "hostPicker": {
+        "searchHosts": "Rechercher des hôtes…",
+        "noHostsMatch": "Aucun hôte ne correspond.",
+        "moreHosts_one": "{{count}} autre hôte. Recherchez-le par son nom.",
+        "moreHosts_other": "{{count}} autres hôtes. Recherchez par nom pour en trouver un."
+      },
       "BrowserCookieImportDisclosure": {
         "title": "Connexions Google non importées",
         "description": "Connectez-vous à Google directement dans Orca."
@@ -3936,6 +3942,12 @@
             "connectedHostCount_one": "{{count}} hôte",
             "connectedHostCount_other": "{{count}} hôtes",
             "connecting": "Connexion…",
+            "searchSshHosts": "Rechercher des hôtes SSH…",
+            "noMatchingSshHosts": "Aucun hôte SSH ne correspond.",
+            "moreSshHostMatches_one": "{{count}} autre résultat. Continuez à taper pour affiner.",
+            "moreSshHostMatches_other": "{{count}} autres résultats. Continuez à taper pour affiner.",
+            "moreSshHosts_one": "Trouver {{count}} autre hôte SSH…",
+            "moreSshHosts_other": "Chercher parmi {{count}} autres hôtes SSH…",
             "runtime_unavailable_transport_up": "Orque indisponible"
           },
           "StatusBar": {
@@ -5552,7 +5564,8 @@
         },
         "PendingWorktreeRow": {
           "af21e953d1": "Annuler la création du worktree",
-          "188f6922a0": "Annuler"
+          "188f6922a0": "Annuler",
+          "creatingWorkspace": "Création de l'espace de travail…"
         },
         "ProjectGroupDeleteDialog": {
           "ca65b78f78": "Annuler",
@@ -12652,7 +12665,6 @@
         "sshManagedHostRemove": {
           "description": "Orca s’exécute sur {{label}}. Dans Orca sur vos hôtes SSH, utilisez Arrêter… pour retirer Orca de l’hôte, ou Oublier… si l’hôte n’existe plus. Vous pourrez ensuite supprimer cet hôte SSH.",
           "open": "Ouvrir Orca sur vos hôtes SSH",
-          "descriptionServers": "Orca tourne sur {{label}}. Dans Serveurs Orca distants, ouvrez le menu ⋯ d’Orca sur {{label}} et choisissez « Arrêter… » pour retirer Orca de l’hôte, ou « Oublier… » si l’hôte n’existe plus. Vous pourrez ensuite supprimer cet hôte SSH.",
           "openServers": "Ouvrir Serveurs Orca distants"
         },
         "managedServers": {
@@ -12676,7 +12688,6 @@
             "confirmForget": "Oublier sur ce poste",
             "keepLinked": "Garder lié",
             "forgetDescription": "Dissocie ce serveur ici sans contacter son hôte. Si l'hôte revient, le serveur y tourne peut-être encore.",
-            "title": "Orca sur {{host}}",
             "orcaVersion": "Orca sur cet hôte : {{version}}",
             "stopOrcaDescription": "Arrête Orca sur l’hôte SSH et le retire de cette liste.",
             "updateOrcaOnHost": "Mettre à jour Orca sur cet hôte"
@@ -13021,9 +13032,6 @@
           "emptyDescription": "Associez une machine de développement, une machine cloud ou un ordinateur chez vous. Ses sessions continuent de tourner quand cet ordinateur est en veille.",
           "movePaused": "Déplacement en pause",
           "shareTitle": "Partager cet ordinateur",
-          "shareDescriptionNamed": "Permettez à un navigateur, un téléphone ou un autre Orca de travailler sur {{name}}.",
-          "shareDescription": "Permettez à un navigateur, un téléphone ou un autre Orca de travailler sur cet ordinateur.",
-          "shareButton": "Partager…",
           "done": "Terminé",
           "unreachableLead": "Orca n’a pas pu joindre ce serveur.",
           "updateFailedLead": "La dernière mise à jour n’a pas abouti.",
@@ -14413,8 +14421,8 @@
             "deleteReasonUnsupportedAgent": "{{value0}} sessions ne peuvent pas être supprimées depuis Orca.",
             "resumeInNewNativeChat": "Reprendre dans un nouveau chat",
             "resumeInNewCli": "Reprendre dans un nouveau terminal",
-            "resumeInNewCliTooltipFork": "Forke cette conversation dans une nouvelle session CLI.",
-            "resumeInNewCliTooltipChat": "Le chat natif reste tel quel."
+            "resumeInNewCliTooltipFork": "Démarre une nouvelle session de l’agent de terminal avec une copie de cette conversation.",
+            "resumeInNewCliTooltipChat": "Ce chat reste inchangé."
           },
           "AiVaultSessionDeleteDialog": {
             "title": "Supprimer cette session ?",
@@ -18541,6 +18549,7 @@
         "notDoneOption": "Le paramètre n'a pas été modifié.",
         "notDoneCommand": "La commande n'a pas été exécutée.",
         "notDoneGoal": "L'objectif n'a pas été modifié.",
+        "notDoneQueuedEdit": "Votre modification n'a pas été enregistrée.",
         "restartFailed": "L'agent n'a pas pu redémarrer.",
         "capacity": "Orca sur l'ordinateur qui exécute ce chat a atteint une limite de requêtes. Mettez à jour Orca sur cet ordinateur, puis réessayez.",
         "outcomeUnknown": "Orca n'a pas pu confirmer ce qui s'est passé. Vérifiez le chat.",
@@ -18702,6 +18711,7 @@
         "permissionFullAccessCodexDescription": "Ne demande jamais ; peut modifier n’importe quel fichier et utiliser le réseau",
         "permissionFullAccessSharedDescription": "Ne demande jamais avant les modifications ou les commandes",
         "pasteFailed": "Échec du collage.",
+        "tooManySkills": "Votre message n’a pas été envoyé à {{agent}}. Gardez au maximum {{limit}} fichiers de compétences sélectionnés et réessayez.",
         "commandAttachmentsUnsupported": "Retirez les pièces jointes avant d'utiliser une commande de session de chat.",
         "optionValueShort": {
           "minimal": "Min.",
@@ -18723,6 +18733,9 @@
         "interruptedCallsLabel": "Appels d'outil interrompus : {{value0}}",
         "runningPreview": "Exécution de {{preview}}",
         "runningCommand": "Commande en cours d'exécution",
+        "showFullOutput": "Afficher la sortie complète",
+        "fullOutputFailed": "Impossible de charger la sortie complète.",
+        "fullOutputPartial": "Affichage de {{shown}} sur {{total}}.",
         "runningNamedPreview": "En cours d'exécution {{toolName}} {{preview}}",
         "runningNamed": "Exécution de {{toolName}}",
         "ranCommandOneToolSummary": "Exécuté la commande {{commandCount}} et utilisé l'outil {{toolCount}}",
@@ -19021,6 +19034,7 @@
         "pendingWork": "Attendez la fin du travail et des messages en attente avant d'utiliser cette commande."
       },
       "drop": {
+        "messageTitle": "Déposez pour joindre à ce message",
         "title": "Déposer pour joindre à ce chat",
         "subtitle": "Les fichiers sont ajoutés à votre message sous forme de chemins que l'agent peut lire."
       },
@@ -19098,6 +19112,7 @@
         "cancelEditing": "Annuler la modification",
         "editChanged": "Ce message a changé pendant que vous le modifiiez. Votre modification se trouve dans le champ de discussion.",
         "editChangedPrompt": "Ce message a changé pendant que vous le modifiiez. Votre modification sera dans le champ de discussion une fois que vous aurez répondu à l'agent.",
+        "editChangedNotSaved": "Ce message a changé pendant que vous le modifiiez. Votre modification n'a pas été enregistrée.",
         "editFailed": "Ce message ne peut pas être modifié.",
         "editGone": "Ce message a déjà été envoyé ou supprimé. Votre modification se trouve dans le champ de discussion.",
         "editGonePrompt": "Ce message a déjà été envoyé ou supprimé. Votre modification sera dans le champ de discussion une fois que vous aurez répondu à l'agent.",
@@ -19107,7 +19122,9 @@
         "collapse": "Réduire",
         "expand": "Développer",
         "queued": "En file d'attente",
-        "clearAll": "Tout effacer"
+        "clearAll": "Tout effacer",
+        "pasteOrDropImages": "Collez ou déposez des images",
+        "saveNeedsContent": "Ajoutez du texte ou une image pour enregistrer"
       },
       "thought": "A réfléchi",
       "thoughtForDuration": "A réfléchi pendant {{duration}}",
@@ -19169,8 +19186,8 @@
     "tab": {
       "bar": {
         "SortableTabContextMenu": {
-          "switchToTerminalView": "Passer à l’agent de terminal",
-          "switchToChatView": "Passer à l’interface de chat",
+          "switchToTerminalView": "Continuer avec l’agent de terminal",
+          "switchToChatView": "Continuer dans l’interface de chat",
           "closeTabsToLeft": "Fermer tous les onglets à gauche"
         },
         "BrowserTab": {
@@ -20050,6 +20067,7 @@
       "empty": "Aucun sous-agent trouvé."
     },
     "antigravityReferenceDescription": "Continue dans une nouvelle conversation Antigravity CLI en utilisant cette transcription comme référence.",
+    "searchHitSourceHost": "Trouvée sur {{value0}}",
     "antigravityIdeToCli": "IDE → CLI",
     "antigravity2ToCli": "2.0 → CLI",
     "continueInCli": "Continuer en CLI",
@@ -20468,7 +20486,17 @@
   "tabHoverCard": {
     "browser": "Navigateur",
     "editor": "Éditeur",
-    "terminal": "Terminal"
+    "terminal": "Terminal",
+    "namingFailure": {
+      "regenerating": "Régénération…",
+      "regenerate": "Régénérer le nom",
+      "title": "Impossible de nommer ce chat",
+      "description": "L’agent de nommage des chats s’est arrêté sur une erreur ; le chat garde donc son premier message comme nom.",
+      "viewError": "voir l’erreur",
+      "dialogTitle": "Échec du nommage automatique du chat",
+      "dialogDescriptionStart": "Orca n’a pas pu générer de nom pour",
+      "dialogDescriptionEnd": "à partir de son premier message."
+    }
   },
   "jira": {
     "savedFilters": {

@@ -481,6 +481,7 @@ describe('remote hidden-output restore abandonment (issue2-hidden-output-skip)',
       ptyIdsByTabId: {
         'tab-1': ['tab-pty']
       },
+      terminalPaneStartsByPaneKey: {},
       terminalLayoutsByTabId: {
         'tab-1': {
           root: { type: 'leaf', leafId: LEAF_1 },

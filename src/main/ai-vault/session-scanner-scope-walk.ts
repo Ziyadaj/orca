@@ -64,7 +64,9 @@ export async function scanInScopeSessions(args: ScopeScanArgs): Promise<AiVaultS
       excludedFilePaths: args.alreadyParsedFilePaths,
       issues: args.issues
     })
-    candidates.push(...files.map((file) => ({ agent: layout.agent, file, codexHome: null })))
+    for (const file of files) {
+      candidates.push({ agent: layout.agent, file, codexHome: null })
+    }
   }
   const walked = await walkInScopeSessions(args, scopePaths).finally(clearSessionScopeCwdKnowledge)
   if (candidates.length === 0) {
@@ -131,7 +133,10 @@ function walkCandidates(
         files.push(file)
       }
     }
-    all.push(...discoveryFileCandidates(discovery, files, args.options))
+    // Why: one item per push; a history-sized list spread into push() exceeds V8's argument limit.
+    for (const candidate of discoveryFileCandidates(discovery, files, args.options)) {
+      all.push(candidate)
+    }
   }
   pruneSessionScopeCwds(seenPaths)
   // Aliases collapse with the listed files still present, so a listed rollout's

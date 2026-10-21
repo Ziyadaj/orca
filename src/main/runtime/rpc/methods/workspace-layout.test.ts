@@ -6,6 +6,12 @@ import { ALL_RPC_METHODS } from './index'
 import { RUNTIME_CAPABILITIES } from '../../../../shared/protocol-version'
 import { MOBILE_RPC_METHOD_ALLOWLIST } from '../../runtime-rpc/runtime-rpc-mobile-method-allowlist'
 
+const paired = vi.hoisted(() => ({ ids: ['one', 'two'] }))
+vi.mock('../../../../shared/runtime-environment-store', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  listEnvironments: () => paired.ids.map((id) => ({ id }))
+}))
+
 const methods = eraseRpcMethods(ALL_RPC_METHODS)
 const subscribe = methods.find((method) => method.name === 'layout.subscribe')
 const unsubscribeMethod = methods.find((method) => method.name === 'layout.unsubscribe')
@@ -162,5 +168,11 @@ describe('layout.getRemoteSnapshots', () => {
     // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler reads only runtime from its context.
     const result = await getRemoteSnapshots.handler(undefined, { runtime } as RpcContext)
     expect(result).toEqual({ snapshots })
+
+    // A server unpaired since its snapshot was stored seeds nothing.
+    paired.ids = ['two']
+    // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: the handler reads only runtime from its context.
+    const afterRemoval = await getRemoteSnapshots.handler(undefined, { runtime } as RpcContext)
+    expect(afterRemoval).toEqual({ snapshots: { two: snapshots.two } })
   })
 })

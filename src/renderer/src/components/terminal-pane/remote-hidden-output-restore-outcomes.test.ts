@@ -452,6 +452,7 @@ describe('remote hidden-output restore outcomes', () => {
       ptyIdsByTabId: {
         'tab-1': ['tab-pty']
       },
+      terminalPaneStartsByPaneKey: {},
       terminalLayoutsByTabId: {
         'tab-1': {
           root: { type: 'leaf', leafId: LEAF_1 },

@@ -172,6 +172,7 @@ function options(): OrcadDeployOptions {
     port: 7777,
     census,
     recountCensus: async () => census,
+    releaseIncumbentAdmission: async () => {},
     readinessTimeoutMs: 1_000,
     sleep: async () => {},
     now: () => new Date('2026-10-02T00:00:00.000Z')

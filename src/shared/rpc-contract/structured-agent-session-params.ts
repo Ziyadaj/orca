@@ -270,16 +270,18 @@ export const RespondToQuestionParams = z
     }
   })
 
-export const SetOptionParams = z
-  .object({
-    envelope: MutationEnvelope,
-    key: Identifier('Invalid option key'),
-    value: z.string().max(MAX_OPTION_LABEL)
-  })
-  .strict()
+export const SetOptionParams = z.strictObject({
+  envelope: MutationEnvelope,
+  key: Identifier('Invalid option key'),
+  value: z.string().max(MAX_OPTION_LABEL)
+})
 
 export const OptionsParams = z.object({ sessionId: SessionId }).strict()
-export const SleepWorkspaceParams = z.object({ workspaceId: z.string().min(1) }).strict()
+export const ItemParams = OptionsParams.extend({ itemId: z.string().min(1) }).strict()
+// Why optional: only a host advertising the workspace-sleep-mark capability is sent `markAsleep`.
+export const SleepWorkspaceParams = z
+  .object({ workspaceId: z.string().min(1), markAsleep: z.literal(true).optional() })
+  .strict()
 export const AcknowledgeAttentionParams = OptionsParams.extend({ observedCursor: JournalCursor })
 
 /** `agentSession.agents` takes nothing: the list is the host's, whichever client asks. */
@@ -364,9 +366,7 @@ export const HistoryParams = z
   })
   .strict()
 
-export const SubscribeParams = z
-  .object({ sessionId: SessionId, cursor: JournalCursor.optional() })
-  .strict()
+export const SubscribeParams = OptionsParams.extend({ cursor: JournalCursor.optional() }).strict()
 
 // Not strict: an older host ignores these params entirely, and this host must ignore a newer client's.
 export const SubscribeTurnCompletionsParams = z.object({ includePrompts: z.boolean().optional() })

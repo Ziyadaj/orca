@@ -602,6 +602,10 @@
           }
         }
       },
+      "hostPicker": {
+        "moreHosts_one": "{{count}} more host. Search by name to find it.",
+        "moreHosts_other": "{{count}} more hosts. Search by name to find one."
+      },
       "linear-issue-attribute-filter-dropdowns": {
         "optionsFromTeam": "Options from {{team}}"
       },
@@ -1904,7 +1908,6 @@
           "outcome": {
             "activeServer": "Not done: this server is the default host for new projects. Choose another one in Advanced before stopping it."
           },
-          "row": {},
           "title": "Orca on your SSH hosts"
         },
         "mobile": {
@@ -1936,7 +1939,6 @@
             }
           }
         },
-        "serverList": {},
         "settingOwnership": {
           "clientDefaultProjectScopes": "Client default + project scopes",
           "terminalQuickCommands": "Commands are saved on this client, then scoped globally or to a project setup so they run from the selected terminal context."
@@ -2523,7 +2525,11 @@
             "connectedHostCount_other": "{{count}} hosts",
             "d09ec41831": "Remote Hosts",
             "fbb3f9f05e": "conflict",
-            "fd9a3c600e": "error"
+            "fd9a3c600e": "error",
+            "moreSshHostMatches_one": "{{count}} more match. Keep typing to narrow it down.",
+            "moreSshHostMatches_other": "{{count}} more matches. Keep typing to narrow them down.",
+            "moreSshHosts_one": "Find {{count}} more SSH host…",
+            "moreSshHosts_other": "Find among {{count}} more SSH hosts…"
           },
           "StatusBar": {
             "06741a2f3d": "Open MiniMax usage details",
@@ -3263,6 +3269,7 @@
         "notDoneCommand": "The command didn't run.",
         "notDoneGoal": "The goal wasn't changed.",
         "notDoneOption": "The setting wasn't changed.",
+        "notDoneQueuedEdit": "Your edit wasn't saved.",
         "notDoneReadHistory": "This chat's history couldn't be loaded.",
         "notDoneSend": "Your message was not sent.",
         "notDoneStop": "The agent wasn't stopped.",

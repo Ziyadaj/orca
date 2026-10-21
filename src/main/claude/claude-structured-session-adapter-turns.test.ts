@@ -25,7 +25,7 @@ describe('ClaudeStructuredSessionAdapter turns and controls', () => {
         fence: 7,
         executionOptions: { model: 'sonnet', effort: 'high' }
       })
-    ).resolves.toEqual({ state: 'admitted' })
+    ).resolves.toMatchObject({ state: 'admitted' })
     const controls = connection.calls.slice(before).map((call) => call.subtype)
     expect(controls.indexOf('set_model')).toBeGreaterThan(-1)
     expect(controls.indexOf('apply_flag_settings')).toBeGreaterThan(controls.indexOf('set_model'))
@@ -43,7 +43,7 @@ describe('ClaudeStructuredSessionAdapter turns and controls', () => {
       fence: 7
     })
 
-    expect(result).toEqual({ state: 'admitted' })
+    expect(result).toMatchObject({ state: 'admitted' })
     expect(settled).toHaveBeenCalledWith({
       sessionId: 'session-1',
       clientMessageId: 'client-1',
@@ -70,7 +70,7 @@ describe('ClaudeStructuredSessionAdapter turns and controls', () => {
         body: USER_MESSAGE,
         fence: 7
       })
-    ).resolves.toEqual({ state: 'admitted' })
+    ).resolves.toMatchObject({ state: 'admitted' })
     expect(settled).not.toHaveBeenCalled()
   })
 
@@ -103,11 +103,9 @@ describe('ClaudeStructuredSessionAdapter turns and controls', () => {
     await expect(
       adapter.setOption({ sessionId: 'session-1', key: 'model', value: 'sonnet', fence: 7 })
     ).resolves.toEqual({ model: 'sonnet' })
-    // The model write pre-flights the catalog first; this CLI lists nothing, which
-    // identifies no model and so refuses none. Then it asks for the new model's window.
-    expect(claude.connections[0].calls.slice(-4)).toEqual([
+    // A literal model goes straight to the CLI; then it asks for the new model's window.
+    expect(claude.connections[0].calls.slice(-3)).toEqual([
       { subtype: 'interrupt', params: {} },
-      { subtype: 'list_models' },
       { subtype: 'set_model', params: { model: 'sonnet' } },
       { subtype: 'get_context_usage' }
     ])
@@ -182,7 +180,7 @@ describe('ClaudeStructuredSessionAdapter turns and controls', () => {
           body: USER_MESSAGE,
           fence: 7
         })
-      ).resolves.toEqual({ state: 'admitted' })
+      ).resolves.toMatchObject({ state: 'admitted' })
       expect(settled).toHaveBeenCalledWith({
         sessionId: 'session-1',
         clientMessageId: 'client-T',
@@ -195,7 +193,7 @@ describe('ClaudeStructuredSessionAdapter turns and controls', () => {
           body: USER_MESSAGE,
           fence: 7
         })
-      ).resolves.toEqual({ state: 'admitted' })
+      ).resolves.toMatchObject({ state: 'admitted' })
       expect(claude.connections[0].sent).toHaveLength(2)
 
       await expect(

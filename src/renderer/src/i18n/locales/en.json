@@ -196,7 +196,7 @@
       "description": "Choose how chats look and behave.",
       "names": {
         "title": "Chat names",
-        "description": "Use an agent to name new chats from their first message. Without a generated name, chats stay Claude Chat or Codex Chat.",
+        "description": "Use an agent to name new chats from their first message. Until a name is generated, a chat shows its first message.",
         "enable": "Name chats automatically",
         "recipe": "Chat name",
         "recipeDescription": "Generate a short name from the first message in a new chat.",
@@ -1473,6 +1473,12 @@
       }
     },
     "components": {
+      "hostPicker": {
+        "searchHosts": "Search hosts…",
+        "noHostsMatch": "No hosts match.",
+        "moreHosts_one": "{{count}} more host. Search by name to find it.",
+        "moreHosts_other": "{{count}} more hosts. Search by name to find one."
+      },
       "BrowserCookieImportDisclosure": {
         "title": "Google logins aren't imported",
         "description": "Sign in to Google directly in Orca."
@@ -4084,7 +4090,13 @@
             "runtime_workspace_window_closed": "Workspace window closed",
             "connectedHostCount_one": "{{count}} host",
             "connectedHostCount_other": "{{count}} hosts",
-            "connecting": "Connecting…"
+            "connecting": "Connecting…",
+            "searchSshHosts": "Search SSH hosts…",
+            "noMatchingSshHosts": "No SSH hosts match.",
+            "moreSshHostMatches_one": "{{count}} more match. Keep typing to narrow it down.",
+            "moreSshHostMatches_other": "{{count}} more matches. Keep typing to narrow them down.",
+            "moreSshHosts_one": "Find {{count}} more SSH host…",
+            "moreSshHosts_other": "Find among {{count}} more SSH hosts…"
           },
           "StatusBar": {
             "9659e38343": "Ports",
@@ -5713,7 +5725,8 @@
         },
         "PendingWorktreeRow": {
           "af21e953d1": "Cancel worktree creation",
-          "188f6922a0": "Cancel"
+          "188f6922a0": "Cancel",
+          "creatingWorkspace": "Creating workspace…"
         },
         "ProjectGroupDeleteDialog": {
           "ca65b78f78": "Cancel",
@@ -12776,7 +12789,7 @@
         "sshManagedHostRemove": {
           "description": "Orca runs on {{label}}. Under Orca on your SSH hosts, use Stop… to remove Orca from the host, or Forget… if the host is gone. Then you can remove this SSH host.",
           "open": "Open Orca on your SSH hosts",
-          "descriptionServers": "Orca runs on {{label}}. In Remote Orca Servers, open the ⋯ menu on Orca on {{label}} and choose Stop… to remove Orca from the host, or Forget… if the host is gone. Then you can remove this SSH host.",
+          "descriptionServerHost": "Orca runs on {{label}}. In Remote Orca Servers, open the ⋯ menu on {{label}} and choose Stop… to remove Orca from the host, or Forget… if the host is gone. Then you can remove this SSH host.",
           "openServers": "Open Remote Orca Servers"
         },
         "managedServers": {
@@ -12800,7 +12813,6 @@
             "confirmForget": "Forget on this desktop",
             "keepLinked": "Keep linked",
             "forgetDescription": "Unlinks this server here without contacting its host. If the host comes back, the server may still be running there.",
-            "title": "Orca on {{host}}",
             "orcaVersion": "Orca on this host: {{version}}",
             "stopOrcaDescription": "Stops Orca on the SSH host and removes it from this list.",
             "updateOrcaOnHost": "Update Orca on this host"
@@ -13185,9 +13197,6 @@
           "emptyDescription": "Pair a dev box, a cloud machine, or a desktop at home. Its sessions keep running there when this computer sleeps.",
           "movePaused": "Move paused",
           "shareTitle": "Share this computer",
-          "shareDescriptionNamed": "Let a browser, phone, or another Orca work on {{name}}.",
-          "shareDescription": "Let a browser, phone, or another Orca work on this computer.",
-          "shareButton": "Share…",
           "done": "Done",
           "unreachableLead": "Orca couldn’t reach this server.",
           "updateFailedLead": "The last update didn’t finish.",
@@ -14590,8 +14599,8 @@
             "deleteReasonUnsupportedAgent": "{{value0}} sessions can't be deleted from Orca.",
             "resumeInNewNativeChat": "Resume in New Chat",
             "resumeInNewCli": "Resume in New Terminal",
-            "resumeInNewCliTooltipFork": "Forks this conversation into a new CLI session.",
-            "resumeInNewCliTooltipChat": "The native chat stays as it is."
+            "resumeInNewCliTooltipFork": "Start a new terminal agent session with a copy of this conversation.",
+            "resumeInNewCliTooltipChat": "This chat stays unchanged."
           },
           "AiVaultSessionDeleteDialog": {
             "title": "Delete this session?",
@@ -18738,6 +18747,7 @@
         "notDoneOption": "The setting wasn't changed.",
         "notDoneCommand": "The command didn't run.",
         "notDoneGoal": "The goal wasn't changed.",
+        "notDoneQueuedEdit": "Your edit wasn't saved.",
         "restartFailed": "The agent couldn't restart.",
         "capacity": "Orca on the computer running this chat has hit a request limit. Update Orca there, then try again.",
         "outcomeUnknown": "Orca couldn't confirm what happened. Check the chat.",
@@ -18894,6 +18904,8 @@
         "imagePasteFailed": "Image paste failed.",
         "imageSaving": "Saving pasted image…",
         "worktreeNotReady": "Worktree not ready — try again in a moment.",
+        "sessionAttachmentsStarting": "{{agent}} chat is still opening. Wait for it to open, then attach the files again.",
+        "sessionAttachmentsFailed": "{{agent}} chat could not open. Use Retry in the chat, then attach the files again.",
         "pasteUnavailable": "Can't paste — this chat isn't accepting input right now.",
         "model": "Model",
         "effort": "Effort",
@@ -18947,6 +18959,7 @@
         "permissionFullAccessCodexDescription": "Never asks; can edit any file and use the network",
         "permissionFullAccessSharedDescription": "Never asks before edits or commands",
         "pasteFailed": "Paste failed.",
+        "tooManySkills": "Your message was not sent to {{agent}}. Keep at most {{limit}} selected skill files and try again.",
         "commandAttachmentsUnsupported": "Remove attachments before using a chat-session command.",
         "optionValueShort": {
           "minimal": "Min",
@@ -18968,6 +18981,9 @@
         "interruptedCallsLabel": "Interrupted tool calls: {{value0}}",
         "runningPreview": "Running {{preview}}",
         "runningCommand": "Running command",
+        "showFullOutput": "Show full output",
+        "fullOutputFailed": "Couldn't load the full output.",
+        "fullOutputPartial": "Showing {{shown}} of {{total}}.",
         "runningNamedPreview": "Running {{toolName}} {{preview}}",
         "runningNamed": "Running {{toolName}}",
         "ranCommandOneToolSummary": "Ran {{commandCount}} command and used {{toolCount}} tool",
@@ -19241,6 +19257,7 @@
         "action": "Rewind to here"
       },
       "drop": {
+        "messageTitle": "Drop to attach to this message",
         "title": "Drop to attach to this chat",
         "subtitle": "Files are added to your message as paths the agent can read."
       },
@@ -19327,6 +19344,7 @@
         "cancelEditing": "Cancel editing",
         "editChanged": "This message changed while you were editing. Your edit is in the chat box.",
         "editChangedPrompt": "This message changed while you were editing. Your edit will be in the chat box after you answer the agent.",
+        "editChangedNotSaved": "This message changed while you were editing. Your edit wasn't saved.",
         "editFailed": "This message can't be edited.",
         "editGone": "This message was already sent or removed. Your edit is in the chat box.",
         "editGonePrompt": "This message was already sent or removed. Your edit will be in the chat box after you answer the agent.",
@@ -19336,7 +19354,9 @@
         "collapse": "Collapse",
         "expand": "Expand",
         "queued": "Queued",
-        "clearAll": "Clear all"
+        "clearAll": "Clear all",
+        "pasteOrDropImages": "Paste or drop images",
+        "saveNeedsContent": "Add text or an image to save"
       },
       "thought": "Thought",
       "thoughtForDuration": "Thought for {{duration}}",
@@ -19344,7 +19364,8 @@
       "explicitChatSsh": "Chat is not available over SSH. Open the agent in a terminal instead.",
       "explicitChatUnavailable": "This workspace cannot run the chat. Check the agent installation or open it in a terminal.",
       "structuredSessionHostDeclined": "Opened {{value0}} in a terminal",
-      "structuredSessionHostDeclinedDescription": "This server can't run a {{value0}} chat in this workspace.",
+      "structuredSessionTerminalNotVisible": "Orca opened {{value0}} in a terminal, but couldn't show it here when the launch finished. Your chat draft was kept.",
+      "structuredSessionHostDeclinedDescription": "This workspace can't run a {{value0}} chat.",
       "structuredSessionHostUnreachable": "Could not reach {{value0}}",
       "structuredSessionHostUnreachableDescription": "Orca did not open a {{value0}} chat. Check the connection to the server and try again.",
       "hostOutage": {
@@ -19374,17 +19395,18 @@
         "replace": "Replace"
       },
       "hostPermission": {
-        "checking": "Checking this host's chat permissions…",
+        "checkAgain": "Check again",
         "launchRefused": "Orca did not start a {{value0}} chat",
+        "checking": "Checking this host's chat permissions…",
         "outdatedHost": "This host runs an older Orca that ignores chat permissions, so {{value0}} would run here without asking. Update Orca on this host to use {{value1}}.",
-        "unverified": "Orca couldn't confirm this host applies chat permissions. Reconnect to it to send."
+        "unverified": "Orca couldn't confirm the host's permissions for {{value0}}."
       }
     },
     "tab": {
       "bar": {
         "SortableTabContextMenu": {
-          "switchToTerminalView": "Switch to Terminal Agent",
-          "switchToChatView": "Switch to Chat UI",
+          "switchToTerminalView": "Continue with Terminal Agent",
+          "switchToChatView": "Continue in Chat UI",
           "closeTabsToLeft": "Close All Tabs To The Left"
         },
         "BrowserTab": {
@@ -20186,6 +20208,7 @@
   },
   "aiVault": {
     "antigravityReferenceDescription": "Continues in a new Antigravity CLI conversation using this transcript as a reference.",
+    "searchHitSourceHost": "Found on {{value0}}",
     "antigravityIdeToCli": "IDE → CLI",
     "antigravity2ToCli": "2.0 → CLI",
     "continueInCli": "Continue in CLI",
@@ -20610,7 +20633,17 @@
   "tabHoverCard": {
     "browser": "Browser",
     "editor": "Editor",
-    "terminal": "Terminal"
+    "terminal": "Terminal",
+    "namingFailure": {
+      "regenerating": "Regenerating…",
+      "regenerate": "Regenerate name",
+      "title": "Couldn't name this chat",
+      "description": "The chat-name agent stopped with an error, so the chat keeps its first message as its name.",
+      "viewError": "view error",
+      "dialogTitle": "Chat auto-name failed",
+      "dialogDescriptionStart": "Orca couldn't generate a name for",
+      "dialogDescriptionEnd": "from its first message."
+    }
   },
   "updates": {
     "installBlock": {

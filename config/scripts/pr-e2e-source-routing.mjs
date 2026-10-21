@@ -136,14 +136,17 @@ export const PR_E2E_SOURCE_ROUTES = [
   // COMPAT(legacy-relay-bridge): revisit 2027-01-15 with src/main/ssh/legacy-relay/.
   {
     id: 'ssh.orcad-legacy-relay-bridge',
-    specs: ['tests/e2e/ssh-orcad-legacy-relay-bridge.spec.ts'],
+    specs: [
+      'tests/e2e/ssh-orcad-legacy-relay-bridge.spec.ts',
+      'tests/e2e/ssh-orcad-relay-tab-only-shell.spec.ts'
+    ],
     matches: (file) =>
       MANAGED_SSH_HARNESS.test(file) ||
       /^tests\/e2e\/(?:helpers\/(?:legacy-relay-docker-host|build-released-relay-bundle)|cross-version-wire\/released-relay-(?:daemon|transport))\.m?ts$/.test(
         file
       ) ||
       (isProductSource(file) &&
-        /(?:legacy-relay(?:-bridge|\/)|orcad-migration-terminal-gate|ssh-host-relay-terminals-on-connect)/.test(
+        /(?:legacy-relay(?:-bridge|\/)|orcad-migration-terminal-gate|ssh-host-relay-terminals-on-connect|orcad-source-dependency-census)/.test(
           file
         ))
   },

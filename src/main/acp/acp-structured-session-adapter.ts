@@ -189,6 +189,8 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       return rejectedAcpDispatch(session)
     }
     const { sessionId, fence, signal } = input
+    signal?.throwIfAborted()
+    input.onInputPreparation?.()
     const optionsApplied = await applyAcpMessageOptions(
       session,
       input.executionOptions,
@@ -292,6 +294,10 @@ export class AcpStructuredSessionAdapter implements StructuredAgentSessionAdapte
       this.children.sessions.delete(sessionId)
     }
   }
+
+  // Undefined until the session opens: the host holds what it handed a starting child.
+  heldSends = (sessionId: string): ReadonlySet<string> | undefined =>
+    this.children.sessions.get(sessionId)?.turns?.heldSends
 
   stopBackgroundTasks: NonNullable<StructuredAgentSessionAdapter['stopBackgroundTasks']> = (
     input

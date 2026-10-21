@@ -222,6 +222,22 @@ describe('a frame that changes only panes’ terminal bindings', () => {
     sync.close()
   })
 
+  // A status says a bound pane's terminal is not live yet; the window keeps the id to restore by.
+  it('rebuilds nothing for a frame that only gives a bound pane a status', async () => {
+    const { store, sync, first, send } = await boot()
+    const before = store.getState().terminalLayoutsByTabId['tab-shell']
+    const sleeping = structuredClone(first)
+    const pane = sleeping.tabs.find((tab) => tab.entityId === 'tab-shell')!.terminal!.panes[0]!
+    expect(pane.ptyId).toBeDefined()
+    pane.status = 'sleeping'
+
+    await send(sleeping)
+
+    expect([...check.fullBuilt, ...check.workspaceBuilt]).toEqual([])
+    expect(store.getState().terminalLayoutsByTabId['tab-shell']).toBe(before)
+    sync.close()
+  })
+
   it('builds only its workspace, from the store’s view, for a frame that also renames', async () => {
     const { store, sync, first, send } = await boot()
     const renamed = rebound(first, 'tab-shell', leaf(1), 'pty-fresh')
@@ -234,6 +250,71 @@ describe('a frame that changes only panes’ terminal bindings', () => {
     expect(
       store.getState().tabsByWorktree[GIT_KEY]!.find((tab) => tab.id === 'tab-shell')
     ).toMatchObject({ customTitle: 'renamed' })
+    sync.close()
+  })
+})
+
+/** The frame with one pane's start status set, or cleared when `status` is absent. */
+function started(
+  layout: PublishedWorkspaceLayout,
+  leafId: string,
+  status?: 'starting' | 'failed',
+  reason?: string
+): PublishedWorkspaceLayout {
+  const next = structuredClone(layout)
+  const pane = next.tabs
+    .find((tab) => tab.entityId === 'tab-shell')!
+    .terminal!.panes.find((candidate) => candidate.leafId === leafId)!
+  delete pane.status
+  delete pane.statusReason
+  if (status) {
+    pane.status = status
+  }
+  if (reason) {
+    pane.statusReason = reason
+  }
+  return next
+}
+
+describe('a frame that changes only a pane’s start status', () => {
+  it('shows the status for that one pane, with no build and the pane tree untouched', async () => {
+    const { store, sync, first, send } = await boot()
+    const layoutsBefore = store.getState().terminalLayoutsByTabId
+    const unbound = rebound(first, 'tab-shell', leaf(1), undefined)
+    await send(unbound)
+    const layouts = store.getState().terminalLayoutsByTabId
+    check.forgetBuilds()
+
+    await send(started(unbound, leaf(1), 'starting'))
+    expect(store.getState().terminalPaneStartsByPaneKey).toEqual({
+      [`tab-shell:${leaf(1)}`]: { status: 'starting' }
+    })
+    await send(started(unbound, leaf(1), 'failed', 'shell not found'))
+
+    expect([...check.fullBuilt, ...check.workspaceBuilt]).toEqual([])
+    // Same tree objects: the pane's view is not remounted.
+    expect(store.getState().terminalLayoutsByTabId).toBe(layouts)
+    expect(layouts['tab-shell']!.root).toBe(layoutsBefore['tab-shell']!.root)
+    expect(store.getState().terminalPaneStartsByPaneKey).toEqual({
+      [`tab-shell:${leaf(1)}`]: { status: 'failed', reason: 'shell not found' }
+    })
+    sync.close()
+  })
+
+  it('drops the status once main binds the pane', async () => {
+    const { store, sync, first, send } = await boot()
+    const unbound = rebound(first, 'tab-shell', leaf(1), undefined)
+    await send(started(unbound, leaf(1), 'starting'))
+    expect(Object.keys(store.getState().terminalPaneStartsByPaneKey)).toEqual([
+      `tab-shell:${leaf(1)}`
+    ])
+
+    await send(rebound(unbound, 'tab-shell', leaf(1), 'pty-fresh'))
+
+    expect(store.getState().terminalPaneStartsByPaneKey).toEqual({})
+    expect(store.getState().terminalLayoutsByTabId['tab-shell']!.ptyIdsByLeafId?.[leaf(1)]).toBe(
+      'pty-fresh'
+    )
     sync.close()
   })
 })

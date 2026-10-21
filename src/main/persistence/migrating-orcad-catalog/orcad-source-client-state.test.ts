@@ -10,6 +10,7 @@ import {
 } from '../../../shared/client-hosted-browser-page-record'
 import type { WorkspaceSessionState } from '../../../shared/workspace-session-state-types'
 import { collectOrcadMigrationSourceClientState } from './orcad-source-client-state'
+import { ORCAD_MIGRATION_UI_ROUTING_MERGE } from './orcad-destination-client-state'
 
 const source = {
   sshTargetId: 'target-1',
@@ -135,9 +136,32 @@ describe('source client-state migration', () => {
     expect(result.payload?.uiRouting).toMatchObject({
       lastActiveRepoId: 'repo-1',
       lastActiveWorktreeId: 'repo-1::/srv/worktree',
-      workspaceHostScope: 'local',
       showDotfilesByWorktree: { 'repo-1::/srv/worktree': false }
     })
+  })
+
+  it("never sends the desktop's sidebar filters, which an older server refuses when they differ", () => {
+    const current = state()
+    current.ui.workspaceHostScope = 'ssh:target-1'
+    current.ui.visibleWorkspaceHostIds = ['ssh:target-1']
+    current.ui.workspaceHostOrder = ['ssh:target-1']
+    current.ui.automationHostFilter = { kind: 'host', hostKey: 'host:desktop:ssh:target-1' }
+    current.ui.filterRepoIds = ['repo-1']
+    current.ui.lastActiveRepoId = 'repo-1'
+
+    const result = collectOrcadMigrationSourceClientState(
+      current,
+      source,
+      catalog,
+      'environment-1',
+      undefined
+    )
+    expect(result.payload?.uiRouting).toEqual({ lastActiveRepoId: 'repo-1' })
+    for (const [key, merge] of Object.entries(ORCAD_MIGRATION_UI_ROUTING_MERGE)) {
+      if (merge === 'desktop-only') {
+        expect(result.payload?.uiRouting).not.toHaveProperty(key)
+      }
+    }
   })
 
   it('leaves behind a mobile selection that points at a group outside the migrated owner', () => {

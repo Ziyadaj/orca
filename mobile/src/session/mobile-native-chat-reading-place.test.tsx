@@ -165,8 +165,7 @@ function Row({ message, rowKey }: { message: NativeChatMessage; rowKey: string }
   const words = prose.map((block, i) =>
     h('span', { key: i }, block.type === 'text' ? block.text : '')
   )
-  const run =
-    tools.length > 0 && h(ToolRun, { blocks: tools, defaultExpanded: false, expandChildren: false })
+  const run = tools.length > 0 && h(ToolRun, { blocks: tools })
   return h('div', { testID: mobileNativeChatRowId(rowKey) }, words, run)
 }
 

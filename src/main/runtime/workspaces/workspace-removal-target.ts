@@ -1,4 +1,4 @@
-import { applyClaudeTerminalImageViewerEnv } from '../terminal-image-viewer-env'
+import { applyRemoteViewerLaunchEnv } from '../remote-viewer-launch-env'
 import type { ResolvedWorktree } from '../runtime-worktree-path-identity'
 import { OrcaRuntimeWithRemoveManagedWorktree } from './workspace-removal'
 import type {
@@ -296,10 +296,7 @@ export abstract class OrcaRuntimeWithResolveWorktreeRemovalTarget extends OrcaRu
       hostIdentity: this.runtimeId,
       toSessionOptions: (preferences) => this.toAgentSessionOptions(preferences)
     })
-    const launch = applyClaudeTerminalImageViewerEnv(
-      resolvedLaunch,
-      opts.terminalImageViewerSupported
-    )
+    const launch = applyRemoteViewerLaunchEnv(resolvedLaunch, opts.terminalImageViewerSupported)
     // An SSH workspace's shell runs on that machine, where this distro's account paths mean nothing.
     return workspace.connectionId
       ? launch

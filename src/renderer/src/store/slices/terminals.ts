@@ -39,6 +39,7 @@ export const createTerminalSlice: StateCreator<AppState, [], [], TerminalSlice> 
   expandedPaneByTabId: {},
   canExpandPaneByTabId: {},
   terminalLayoutsByTabId: {},
+  terminalPaneStartsByPaneKey: {},
   localOnlyScrollbackByTabId: {},
   pendingStartupByTabId: {},
   pendingInitialCwdByTabId: {},

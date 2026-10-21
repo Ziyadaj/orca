@@ -57,8 +57,9 @@ export const mobileSessionFrameStyles = StyleSheet.create({
   },
   // Landscape phone: the tab strip takes the row's spare width instead of the title.
   sessionTitleBlockBesideTabs: {
-    flex: 0,
-    flexShrink: 1,
+    // -1, not 0: web reads flex 0 as a zero basis and collapses the title; -1 is natural width,
+    // shrinking only when the row overflows, on both web and native.
+    flex: -1,
     maxWidth: 160
   },
   sessionTitle: {
@@ -142,6 +143,10 @@ export const mobileSessionFrameStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs
+  },
+  // The page shrinks a bare svg in a row before the title's ellipsis kicks in.
+  tabIcon: {
+    flexShrink: 0
   },
   tabText: {
     flexShrink: 1,

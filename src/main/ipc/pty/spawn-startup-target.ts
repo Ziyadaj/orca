@@ -43,7 +43,7 @@ type PtySpawnStartupArgs = {
   plannedPty?: LocalWindowsTerminalRuntimeOptions
   projectRuntimeSource: PtySpawnProjectRuntimeSource
   /** TEMPORARY (row 13a removes it): only window starts fall back to the root of a missing cwd. */
-  missingCwdFallback?: { directoryExists: (path: string) => boolean }
+  missingCwdFallback?: { directoryExists: (path: string) => Promise<boolean> }
   getSettings: (() => Parameters<typeof resolveLocalPtyOptions>[0]) | undefined
   resolveStartupCwd: (
     worktreeId: string | undefined,
@@ -90,7 +90,7 @@ export async function resolvePtySpawnStartupTarget(
 
 async function resolveStartupCwdWithFallback(
   { worktreeId, resolveStartupCwd, ...args }: PtySpawnStartupArgs,
-  fallback: { directoryExists: (path: string) => boolean },
+  fallback: { directoryExists: (path: string) => Promise<boolean> },
   runtimeOptions: LocalWindowsTerminalRuntimeOptions
 ): Promise<Pick<PtySpawnStartupTarget, 'cwd' | 'prevalidatedCwd' | 'startupCwdFallback'>> {
   const isPosixStartupCwd = args.cwd?.startsWith('/') === true
@@ -117,14 +117,14 @@ async function resolveStartupCwdWithFallback(
     const validationCwd = toWindowsWslPath(initiallyResolvedStartupCwd, startupWslContext.distro)
     wslStartupCwdExists = isWslUncPath(validationCwd)
       ? await wslUncDirectoryExistsAsync(validationCwd)
-      : fallback.directoryExists(validationCwd)
+      : await fallback.directoryExists(validationCwd)
     if (wslStartupCwdExists === true) {
       prevalidatedCwd = validationCwd
     }
     if (wslStartupCwdExists === false && startupWorkspaceCwd) {
       wslWorkspaceCwdExists = isWslUncPath(startupWorkspaceCwd)
         ? await wslUncDirectoryExistsAsync(startupWorkspaceCwd)
-        : fallback.directoryExists(startupWorkspaceCwd)
+        : await fallback.directoryExists(startupWorkspaceCwd)
       if (wslWorkspaceCwdExists === true) {
         prevalidatedCwd = startupWorkspaceCwd
       }
@@ -133,25 +133,50 @@ async function resolveStartupCwdWithFallback(
   const allowMissingCwdFallback =
     !wslRuntimeOwnsStartupCwd || (wslStartupCwdExists === false && wslWorkspaceCwdExists === true)
   let didFallbackToWorkspaceRootCwd = false
+  const probedDirectories = new Map<string, boolean>()
+  let unprobedDirectory: string | undefined
+  const missingDirFallback = (
+    onFallbackToWorkspaceRoot?: () => void
+  ): TerminalStartupCwdMissingDirFallback => ({
+    directoryExists: (path) => {
+      if (
+        startupWslContext &&
+        wslStartupCwdExists === false &&
+        path === initiallyResolvedStartupCwd
+      ) {
+        return false
+      }
+      if (startupWslContext && path === startupWorkspaceCwd) {
+        return wslWorkspaceCwdExists === true
+      }
+      const probePath = process.platform === 'win32' ? normalizeWindowsTerminalCwd(path) : path
+      const exists = probedDirectories.get(probePath)
+      if (exists === undefined) {
+        unprobedDirectory ??= probePath
+      }
+      return exists ?? false
+    },
+    onFallbackToWorkspaceRoot
+  })
+  if (allowMissingCwdFallback) {
+    // Why replay: the shared resolver asks synchronously, so probe each folder it asks about off
+    // the main thread, in its order, until a dry run asks about none it lacks.
+    for (;;) {
+      unprobedDirectory = undefined
+      resolveStartupCwd(worktreeId, args.cwd, missingDirFallback())
+      if (unprobedDirectory === undefined) {
+        break
+      }
+      probedDirectories.set(unprobedDirectory, await fallback.directoryExists(unprobedDirectory))
+    }
+  }
   const cwd = resolveStartupCwd(
     worktreeId,
     args.cwd,
     allowMissingCwdFallback
-      ? {
-          directoryExists: (path) =>
-            startupWslContext &&
-            wslStartupCwdExists === false &&
-            path === initiallyResolvedStartupCwd
-              ? false
-              : startupWslContext && path === startupWorkspaceCwd
-                ? wslWorkspaceCwdExists === true
-                : fallback.directoryExists(
-                    process.platform === 'win32' ? normalizeWindowsTerminalCwd(path) : path
-                  ),
-          onFallbackToWorkspaceRoot: () => {
-            didFallbackToWorkspaceRootCwd = true
-          }
-        }
+      ? missingDirFallback(() => {
+          didFallbackToWorkspaceRootCwd = true
+        })
       : undefined
   )
   if (didFallbackToWorkspaceRootCwd && wslWorkspaceCwdExists === true && cwd) {

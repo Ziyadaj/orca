@@ -2,6 +2,16 @@ import {
   PREFLIGHT_OTHER_RUNTIME_REFUSAL_RUNTIME_CAPABILITY,
   WORKSPACE_ON_OTHER_RUNTIME
 } from '../../../src/shared/protocol-version'
+import {
+  findFolderWorkspaceCandidateRepos,
+  resolveFolderWorkspaceHost
+} from '../../../src/shared/folder-workspace-execution-host'
+import {
+  newTabFolderWorkspaceListRead,
+  newTabFolderProjectGroupListRead,
+  newTabFolderRepoListRead
+} from './mobile-new-tab-folder-host-operations'
+import { parseExecutionHostId } from '../../../src/shared/execution-host'
 import { newTabSettingsRead } from '../transport/settings-read-operations'
 import {
   type MobileRuntimeRepoSummary,
@@ -100,6 +110,9 @@ async function loadDetectedAgents(
       repo: null
     }
   }
+  if (worktreeId.startsWith('folder:')) {
+    return loadFolderDetectedAgents(client, worktreeId, hostRefusesOtherRuntime)
+  }
   const repoResponse = await newTabRepoListRead.request(client)
   // oxlint-disable-next-line typescript/consistent-type-assertions -- SAFETY: Preserve the established response shape at this boundary.
   const repos = (newTabRepoListRead.interpret(repoResponse) as MobileRuntimeRepoSummary[]) ?? []
@@ -108,7 +121,6 @@ async function loadDetectedAgents(
   if (!repo) {
     throw new Error('worktree_repo_not_found')
   }
-  // A prefix test, not parseExecutionHostId: importing execution-host here splits a web bundle chunk.
   const runtimeOwned = repos
     .filter((candidate) => candidate.id === repoId)
     .map((candidate) => candidate.executionHostId?.startsWith('runtime:') === true)
@@ -150,4 +162,74 @@ function interpretDetectedAgents(detected: DetectedAgentsReply): unknown[] {
     }
     throw error
   }
+}
+
+async function loadFolderDetectedAgents(
+  client: RpcClient,
+  worktreeId: string,
+  hostRefusesOtherRuntime: boolean
+): Promise<DetectedAgentsReply> {
+  if (hostRefusesOtherRuntime) {
+    return {
+      reply: await preflightDetectAgentsRead.request(client, { worktreeId }),
+      interpret: preflightDetectAgentsRead.interpret,
+      repo: null
+    }
+  }
+  // Older hosts ignore worktreeId during detection, so resolve their folder catalog first.
+  const [folders, groups, repos] = await Promise.all([
+    newTabFolderWorkspaceListRead.request(client),
+    newTabFolderProjectGroupListRead.request(client),
+    newTabFolderRepoListRead.request(client)
+  ])
+  const catalog = {
+    folderWorkspaces: newTabFolderWorkspaceListRead.interpret(folders),
+    projectGroups: newTabFolderProjectGroupListRead.interpret(groups),
+    repos: newTabFolderRepoListRead.interpret(repos)
+  }
+  const folderId = worktreeId.slice('folder:'.length)
+  const workspaces = catalog.folderWorkspaces.filter((workspace) => workspace.id === folderId)
+  if (workspaces.length > 1) {
+    throw new Error('worktree_execution_host_unresolved')
+  }
+  const workspace = workspaces[0]
+  const explicitHost = parseExecutionHostId(workspace?.executionHostId)
+  const groupsForWorkspace = catalog.projectGroups.filter(
+    (entry) => entry.id === workspace?.projectGroupId
+  )
+  if (!explicitHost && groupsForWorkspace.length > 1) {
+    throw new Error('worktree_execution_host_unresolved')
+  }
+  const group = groupsForWorkspace[0]
+  // A legacy host cannot disambiguate another runtime's rows or address its private SSH targets.
+  if (
+    workspaces.some((entry) => entry.executionHostId?.startsWith('runtime:')) ||
+    (!explicitHost &&
+      ((!workspace?.connectionId?.trim() && group?.executionHostId?.startsWith('runtime:')) ||
+        findFolderWorkspaceCandidateRepos(catalog, folderId).some((repo) =>
+          repo.executionHostId?.startsWith('runtime:')
+        )))
+  ) {
+    throw new MobileWorkspaceOnOtherRuntimeError()
+  }
+  const host = resolveFolderWorkspaceHost(catalog, folderId)
+  if (host.kind === 'runtime') {
+    throw new MobileWorkspaceOnOtherRuntimeError()
+  }
+  if (host.kind === 'missing' || host.kind === 'ambiguous') {
+    throw new Error('worktree_execution_host_unresolved')
+  }
+  return host.kind === 'ssh'
+    ? {
+        reply: await preflightDetectRemoteAgentsRead.request(client, {
+          connectionId: host.targetId
+        }),
+        interpret: preflightDetectRemoteAgentsRead.interpret,
+        repo: null
+      }
+    : {
+        reply: await preflightDetectAgentsRead.request(client, { worktreeId }),
+        interpret: preflightDetectAgentsRead.interpret,
+        repo: null
+      }
 }

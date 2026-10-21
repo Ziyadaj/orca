@@ -166,7 +166,7 @@ function Shift({ value }: { value: number }): null {
 }
 function Chat({
   rows,
-  tools = true,
+  open = true,
   shown = true,
   scope = 'chat',
   shift = 0,
@@ -175,7 +175,8 @@ function Chat({
   working = false
 }: {
   rows: NativeChatMessage[]
-  tools?: boolean
+  /** Runs, their lines and settled turns start open, as a reader who opened them left them. */
+  open?: boolean
   shown?: boolean
   scope?: string
   shift?: number
@@ -184,6 +185,17 @@ function Chat({
   working?: boolean
 }) {
   const current = useMobileNativeChatDisclosures(scope)
+  const disclosures = useMemo(
+    () =>
+      open
+        ? {
+            ...current,
+            read: (key: string) =>
+              current.read(key) ?? (/^(run|line|diff):/.test(key) ? true : undefined)
+          }
+        : current,
+    [current, open]
+  )
   const drawn = useMemo(() => (structured ? rows : foldToolMessages(rows)), [rows, structured])
   const turns = useMobileNativeChatTurnDisclosure({
     messages: drawn,
@@ -207,14 +219,14 @@ function Chat({
   }
   return h(
     MobileNativeChatDisclosureContext.Provider,
-    { value: current },
+    { value: disclosures },
     h(
       MobileNativeChatScrollHold,
       {
         rowKeys: keys,
         roots: current.roots,
         runPlacements: keys.runPlacements,
-        layoutKey: String(tools),
+        layoutKey: '1',
         listRef: ref,
         isFollowing: () => false
       },
@@ -229,9 +241,9 @@ function Chat({
               message,
               rowKey: keys.keyOf(message),
               ...turns.resolveRow(i, message),
+              ...(open ? { foldedAway: false } : {}),
               runOwner: keys.runOwners.get(message.id),
-              structuredActivityUi: structured,
-              toolsExpanded: tools
+              structuredActivityUi: structured
             })
           )
       )
@@ -361,7 +373,7 @@ it.each([true, false])(
     const draw = mount(structured)
     draw([user, a, b], { working: true })
     const original = owners[1]
-    const oldKey = `run:${original}:true`
+    const oldKey = `run:${original}`
     act(() => store.write(oldKey, false))
     store.runScroll.set(oldKey, { top: 111, followsEnd: false })
     const splitRows = [
@@ -389,7 +401,7 @@ it.each([true, false])(
     expect(store.runScroll.get(oldKey)?.top).toBe(111)
     expect(roots.frame(`run:${owners[1]}`)).toBe(reused)
     expect(reused.scrollTop).toBe(40)
-    expect(store.runScroll.get(`run:${owners[1]}:true`)?.followsEnd).toBe(false)
+    expect(store.runScroll.get(`run:${owners[1]}`)?.followsEnd).toBe(false)
   }
 )
 
@@ -446,36 +458,30 @@ it('waits for simultaneous inner rest, releases on close/scope change, and separ
   draw([user, a], { scope: 'other' })
   await leaving
   vi.stubGlobal('navigator', { userAgent: 'AppleWebKit Safari' })
-  draw([user, a], { scope: 'other', tools: false, working: true })
+  draw([user, a], { scope: 'live', open: false, working: true })
   act(() => container.querySelector<HTMLElement>('[data-live]')!.click())
   const key = `run:${owners[1]}`
   const live = roots.frame(key)!
   const end = live.scrollTop
   expect(end).toBe(live.scrollHeight - live.clientHeight)
-  const previous = store.runScroll.get(`${key}:false`)!
-  draw([user, a], { scope: 'other', working: true, shift: 40 })
-  expect(roots.frame(key)).toBe(live)
-  expect(live.scrollTop).toBe(end)
-  expect(live.scrollTop).toBeLessThan(live.scrollHeight - live.clientHeight)
-  expect(correctPage).toHaveBeenCalledExactlyOnceWith(40, true)
   reader(live, end - 100)
-  draw([user, a], { scope: 'other', tools: false, working: true, shift: 40 })
+  draw([user, a], { scope: 'live', open: false, working: true, shift: 40 })
+  expect(roots.frame(key)).toBe(live)
   expect(live.scrollTop).toBe(end - 100)
-  expect(store.runScroll.get(`${key}:false`)?.followsEnd).toBe(false)
-  expect(previous.followsEnd).toBe(true)
+  expect(store.runScroll.get(key)?.followsEnd).toBe(false)
   reader(live, live.scrollHeight - live.clientHeight - 20)
   await vi.advanceTimersByTimeAsync(160)
-  draw([user, a, b], { scope: 'other', tools: false, working: true, shift: 40 })
+  draw([user, a, b], { scope: 'live', open: false, working: true, shift: 40 })
   expect(live.scrollTop).toBe(live.scrollHeight - live.clientHeight)
-  draw([user, a, b], { scope: 'other', tools: false, working: true, shown: false, shift: 40 })
-  store.runScroll.set(`${key}:false`, { top: 37, followsEnd: false })
-  draw([user, a, b], { scope: 'other', tools: false, working: true, shift: 40 })
+  draw([user, a, b], { scope: 'live', open: false, working: true, shown: false, shift: 40 })
+  store.runScroll.set(key, { top: 37, followsEnd: false })
+  draw([user, a, b], { scope: 'live', open: false, working: true, shift: 40 })
   expect(roots.frame(key)?.scrollTop).toBe(37)
   detach()
   pageMotion.release()
 })
 
-it('keeps the actual changed task checklist through eviction and Tools, isolated by chat', () => {
+it('keeps the actual changed task checklist through eviction, isolated by chat', () => {
   const draw = mount()
   const tasks = msg(
     'tasks',
@@ -504,9 +510,6 @@ it('keeps the actual changed task checklist through eviction and Tools, isolated
   draw([user, tasks], { shown: false })
   draw([user, tasks])
   expect(count()).toBe(before + 1)
-  draw([user, tasks], { tools: false })
-  draw([user, tasks])
-  expect(count()).toBe(before + 1)
   draw([user, tasks], { scope: 'different' })
   expect(count()).toBe(before)
 })
@@ -514,14 +517,10 @@ it('keeps the actual changed task checklist through eviction and Tools, isolated
 it("forgets a closed tool line's nested command and output positions, not its neighbours'", () => {
   const at = { top: 30, followsEnd: false }
   const memory = new Map(
-    ['run:o:true', 'run:o:true/line:a:command', 'run:o:true/line:a:output', 'line:a:command']
-      .concat(['run:o:true/line:ab:command', 'diff:src/line:a.ts'])
+    ['run:o', 'run:o/line:a:command', 'run:o/line:a:output', 'line:a:command']
+      .concat(['run:o/line:ab:command', 'diff:src/line:a.ts'])
       .map((address) => [address, at] as const)
   )
   new MobileNativeChatScrollRoots(memory, 10).forget('line:a')
-  expect([...memory.keys()]).toEqual([
-    'run:o:true',
-    'run:o:true/line:ab:command',
-    'diff:src/line:a.ts'
-  ])
+  expect([...memory.keys()]).toEqual(['run:o', 'run:o/line:ab:command', 'diff:src/line:a.ts'])
 })

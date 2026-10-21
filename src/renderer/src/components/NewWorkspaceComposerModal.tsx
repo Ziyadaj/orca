@@ -28,6 +28,7 @@ import { translate } from '@/i18n/i18n'
 import { getWorkspaceComposerInitialFocusTarget } from '@/lib/workspace-composer-initial-focus'
 import { getFolderWorkspacePrimaryActionLabel } from '@/components/sidebar/folder-workspace-composer-helpers'
 import type { WorkspaceCreationTargetHint } from '@/lib/project-host-workspace-target'
+import { addAppKeyListener, removeAppKeyListener } from '@/lib/app-keyboard-router'
 
 // Why: match App-level AddRepoDialog loading — the add flow is off the hot
 // path for the composer, so keep its clone/SSH machinery out of the entry render.
@@ -284,8 +285,8 @@ function QuickTabBody({
       event.preventDefault()
       void handleCreate()
     }
-    window.addEventListener('keydown', onKeyDown, { capture: true })
-    return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
+    addAppKeyListener('keydown', onKeyDown)
+    return () => removeAppKeyListener('keydown', onKeyDown)
   }, [active, composerRef, createDisabled, handleCreate, nestedDialogOpen])
 
   return (

@@ -1,9 +1,11 @@
 import {
   AGENT_STATUS_STALE_AFTER_MS,
+  pickHostTurnEnd,
   pickParsedAgentStatusPayload,
   type AgentStatusEntry,
   type AgentStatusIpcPayload,
-  type ParsedAgentStatusPayload
+  type ParsedAgentStatusPayload,
+  type TurnEndDisposition
 } from '../../shared/agent-status-types'
 import type { AgentProviderSessionMetadata } from '../../shared/agent-session-resume'
 import type { ProgramStatusFacet } from '../../shared/program-status/facet'
@@ -18,6 +20,8 @@ export type RuntimeAgentRowSnapshot = {
   connectionId: string | null
   payload: ParsedAgentStatusPayload
   stateStartedAt: number
+  turnEndedAt?: number
+  turnEndDisposition?: TurnEndDisposition
   updatedAt: number
   evidenceObservedAt?: number
   providerSession?: AgentProviderSessionMetadata
@@ -134,6 +138,7 @@ export function selectFreshAgentRowForMobileTab(args: {
     ...(match.tabId ? { tabId: match.tabId } : {}),
     payload: pickParsedAgentStatusPayload(match),
     stateStartedAt: match.stateStartedAt ?? match.receivedAt,
+    ...pickHostTurnEnd(match),
     updatedAt: match.receivedAt,
     ...(match.providerSession ? { providerSession: match.providerSession } : {}),
     ...(match.programStatus ? { programStatus: match.programStatus } : {}),

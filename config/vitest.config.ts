@@ -4,10 +4,11 @@ import { defaultExclude, defineConfig } from 'vitest/config'
 import { UNIT_INCLUDE, UNIT_EXCLUDE } from './scripts/ci-unit-files.mjs'
 import TimingSequencer from './scripts/ci-unit-sequencer.mjs'
 import RuntimeSequencer from './scripts/vitest-runtime-sequencer.mjs'
-import { NODE_RUNTIME_INCLUDE } from './scripts/vitest-node-runtime-files.mjs'
+import { getNodeRuntimeInclude } from './scripts/vitest-node-runtime-files.mjs'
 import { nodeRuntimePool } from './scripts/vitest-node-runtime-pool'
 import { createWorkspaceSourceResolver } from './scripts/workspace-source-exports.mjs'
 
+const nodeRuntimeInclude = process.versions.bun ? getNodeRuntimeInclude() : []
 const balancedShards = process.env.ORCA_BALANCE_UNIT_SHARDS === '1'
 const measurementFile = 'src/main/foreign-sqlite-readers/foreign-sqlite-reader-event-loop.test.ts'
 const paletteMeasurementFile =
@@ -64,7 +65,7 @@ const nodeProject = {
     ...testOptions,
     name: process.versions.bun ? 'node-runtime' : 'node',
     env: { ORCA_VITEST_RUNTIME: process.versions.bun ? 'node-runtime' : 'node' },
-    include: process.versions.bun ? NODE_RUNTIME_INCLUDE : UNIT_INCLUDE,
+    include: process.versions.bun ? nodeRuntimeInclude : UNIT_INCLUDE,
     exclude: [...testOptions.exclude, ...measurementFiles],
     sequence: { groupOrder: 1 },
     ...(process.versions.bun
@@ -80,7 +81,7 @@ const bunProject = {
     name: 'bun',
     env: { ORCA_VITEST_RUNTIME: 'bun' },
     pool: 'forks',
-    exclude: [...testOptions.exclude, ...NODE_RUNTIME_INCLUDE, ...measurementFiles],
+    exclude: [...testOptions.exclude, ...nodeRuntimeInclude, ...measurementFiles],
     sequence: { groupOrder: 1 }
   }
 }

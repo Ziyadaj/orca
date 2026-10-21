@@ -601,6 +601,29 @@ function updateTraffic(config, args) {
   ])
 }
 
+export function serviceMaximumInstances(service) {
+  const value = service.metadata?.annotations?.['run.googleapis.com/maxScale']
+  return value === undefined ? undefined : Number(value)
+}
+
+function clearServiceMaximumInstances(config) {
+  // `--max=0` resets the service cap to Cloud Run's default without a new revision.
+  commandText(['run', 'services', 'update', config.service, ...serviceArguments(config), '--max=0', '--quiet'])
+}
+
+// Why: a service cap is divided among the revisions taking traffic, so one below two full
+// revisions leaves a 20% candidate a fifth of it while the serving floor holds the rest.
+function ensureServiceRoomForOverlap(config, operations, service, revisionMaximum) {
+  const cap = serviceMaximumInstances(service)
+  if (cap === undefined || cap >= 2 * revisionMaximum) return
+  operations.clearServiceMaximumInstances(config)
+  const cleared = serviceMaximumInstances(operations.describeService(config))
+  if (cleared !== undefined && cleared < 2 * revisionMaximum) {
+    throw new Error(`director service still caps instances at ${cleared}, below two revisions of ${revisionMaximum}`)
+  }
+  console.warn(JSON.stringify({ event: 'director_service_cap_cleared', from: cap, to: cleared ?? null }))
+}
+
 function removeDirectorTrafficTags(config, operations, retained = new Set()) {
   const tags = trafficTags(operations.describeService(config)).filter(
     (tag) => !retained.has(tag)
@@ -636,7 +659,11 @@ function pruneDirectorRevisions(config, operations) {
   }
 }
 
-function deployCandidate(
+function deployCandidate(...candidate) {
+  commandText(candidateUpdateArguments(...candidate))
+}
+
+export function candidateUpdateArguments(
   config,
   tag,
   env = {},
@@ -657,7 +684,8 @@ function deployCandidate(
     tag,
     '--no-traffic'
   ]
-  if (maxInstances !== undefined) args.push('--max', String(maxInstances))
+  // Per revision: gcloud's `--max` is the service cap, which Cloud Run splits by traffic share.
+  if (maxInstances !== undefined) args.push('--max-instances', String(maxInstances))
   if (config.role === 'director') {
     args.push(
       '--update-secrets',
@@ -676,7 +704,7 @@ function deployCandidate(
     args.push('--update-env-vars', environmentUpdateValue(env))
   }
   args.push('--quiet')
-  commandText(args)
+  return args
 }
 
 function revisionShape(revision, mutableEnvironment, allowServiceAccountChange = false) {
@@ -1014,6 +1042,7 @@ export async function deployDirector(config, tag, overrides = {}) {
     deployCandidate,
     describeService,
     describeRevision,
+    clearServiceMaximumInstances,
     listRevisions,
     deleteRevision,
     updateTraffic,
@@ -1124,6 +1153,7 @@ export async function deployDirector(config, tag, overrides = {}) {
   if (!bootstrapRuntimeIdentity) {
     await verifyRehomeDisabled(config['rehome-control-origin'])
   }
+  ensureServiceRoomForOverlap(config, operations, initialService, requiredMaximumInstances)
   removeDirectorTrafficTags(config, operations)
   let deployed
   let staged = false

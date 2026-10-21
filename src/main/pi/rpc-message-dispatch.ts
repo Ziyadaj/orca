@@ -52,10 +52,15 @@ export async function dispatchPiRpcMessage(
       )
     }
   }
+  input.signal?.throwIfAborted()
+  if (!isCurrent() || session.connection.closed) {
+    return exited()
+  }
+  input.onInputPreparation?.()
   const model = input.executionOptions?.model ?? session.initialOptions.model
   if (!input.executionOptions) {
     input.signal?.throwIfAborted()
-    return session.turns.submit(
+    return session.submit(
       input.clientMessageId,
       input.requestedAt ?? Date.now(),
       { ...prompt },
@@ -103,7 +108,7 @@ export async function dispatchPiRpcMessage(
   if (!isCurrent() || session.connection.closed) {
     return exited()
   }
-  return session.turns.submit(
+  return session.submit(
     input.clientMessageId,
     input.requestedAt ?? Date.now(),
     { ...prompt },

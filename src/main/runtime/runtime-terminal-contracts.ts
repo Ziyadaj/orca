@@ -110,6 +110,10 @@ export type TerminalCreateOptions = {
   agentLaunchViewer?: () => AgentLaunchTabViewerRule
   tabId?: string
   leafId?: string
+  /** Layout-owner build: a pane this create writes stays when its start fails, showing why. */
+  keepPaneOnStartFailure?: true
+  /** With `keepPaneOnStartFailure`: a start already known to fail; only its pane is written. */
+  startFailure?: Error
   /** Refuse, rather than attach, when `tabId`/`leafId` name a pane whose PTY is already live. */
   requireFreshPane?: boolean
   sessionId?: string
@@ -196,7 +200,14 @@ export type RuntimeTerminalProgramStatusFacetEvent = {
 
 export type HookLiveAgentRow = Pick<
   RuntimeAgentRowSnapshot,
-  'payload' | 'updatedAt' | 'evidenceObservedAt' | 'stateStartedAt' | 'worktreeId' | 'programStatus'
+  | 'payload'
+  | 'updatedAt'
+  | 'evidenceObservedAt'
+  | 'stateStartedAt'
+  | 'turnEndedAt'
+  | 'turnEndDisposition'
+  | 'worktreeId'
+  | 'programStatus'
 >
 
 export type TerminalHandleRecord = {

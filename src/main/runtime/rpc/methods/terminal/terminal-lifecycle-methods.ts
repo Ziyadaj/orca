@@ -104,12 +104,25 @@ export const TERMINAL_LIFECYCLE_METHODS = [
     permission: 'workspace',
     params: TerminalSplit,
     handler: async (params, { runtime }) => ({
-      split: await runtime.splitTerminal(params.terminal, {
-        direction: params.direction,
-        command: params.command,
-        env: params.env,
-        telemetrySource: params.telemetrySource
-      })
+      split:
+        params.pane && !params.terminal
+          ? await runtime.splitTerminalPane(params.pane, {
+              direction: params.direction ?? 'horizontal',
+              newLeafId: params.newLeafId,
+              cwd: params.cwd,
+              initialSize: params.initialSize,
+              command: params.command,
+              env: params.env,
+              // The window's split shows why its start failed, as its own spawn did.
+              keepPaneOnStartFailure: true
+            })
+          : // The schema requires a handle when no pane is named.
+            await runtime.splitTerminal(params.terminal ?? '', {
+              direction: params.direction,
+              command: params.command,
+              env: params.env,
+              telemetrySource: params.telemetrySource
+            })
     })
   }),
   defineMethod({

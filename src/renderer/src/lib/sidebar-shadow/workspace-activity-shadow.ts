@@ -23,10 +23,14 @@ export function readWindowWorkspaceActivityFacts(
     | 'browserTabsByWorktree'
     | 'unifiedTabsByWorktree'
     | 'agentStatusByPaneKey'
-  >,
+  > &
+    Partial<Pick<AppState, 'structuredChatSleptAtByPaneKey'>>,
   now: number
 ): Map<string, WorkspaceActivityFacts> {
-  const structuredChatIds = getWorktreeIdsWithStructuredChat(state.unifiedTabsByWorktree)
+  const structuredChatIds = getWorktreeIdsWithStructuredChat(
+    state.unifiedTabsByWorktree,
+    state.structuredChatSleptAtByPaneKey
+  )
   const agentById = getLiveAgentStatusByWorktreeId(
     state.agentStatusByPaneKey,
     state.tabsByWorktree,

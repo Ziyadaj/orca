@@ -46,6 +46,7 @@ describe('CodexStructuredSessionAdapter.acquire', () => {
     expect(codex.connections[0].calls.map((call) => call.method)).toEqual([
       'initialize',
       'thread/start',
+      'skills/list',
       'model/list'
     ])
   })
@@ -163,8 +164,7 @@ describe('CodexStructuredSessionAdapter.acquire', () => {
   it('resumes the thread the durable handle chain names, not the client one', async () => {
     const codex = fakeCodex()
     const adapter = adapterFor(codex, {
-      resumeThreadId: 'thread-proven',
-      resumePath: '/rollouts/thread-proven.jsonl'
+      resumeThreadId: 'thread-proven'
     })
 
     await acquireReadyCodexForTest(adapter, {
@@ -177,8 +177,7 @@ describe('CodexStructuredSessionAdapter.acquire', () => {
       method: 'thread/resume',
       params: expect.objectContaining({
         threadId: 'thread-proven',
-        cwd: '/work/repo',
-        path: '/rollouts/thread-proven.jsonl'
+        cwd: '/work/repo'
       })
     })
     expect(codexStartedLink(adapter)?.origin).toBe('resumed')
@@ -454,7 +453,7 @@ describe('CodexStructuredSessionAdapter.dispatch', () => {
 
     // Identity is not knowable here: a send coalesced into a running turn shares
     // that turn's id, so the echo settles which message landed where.
-    expect(outcome).toEqual({ state: 'admitted' })
+    expect(outcome).toMatchObject({ state: 'admitted' })
     expect(codex.connections[0].calls.find((call) => call.method === 'turn/start')?.params).toEqual(
       {
         threadId: THREAD_ID,
@@ -487,7 +486,7 @@ describe('CodexStructuredSessionAdapter.dispatch', () => {
       fence: 7
     })
 
-    expect(outcome).toEqual({ state: 'admitted' })
+    expect(outcome).toMatchObject({ state: 'admitted' })
     expect(events.at(-1)).toMatchObject({ type: 'notification', method: 'turn/started' })
   })
 
@@ -511,7 +510,7 @@ describe('CodexStructuredSessionAdapter.dispatch', () => {
       fence: 7
     })
 
-    expect(outcome).toEqual({ state: 'admitted' })
+    expect(outcome).toMatchObject({ state: 'admitted' })
     // Each event carries the thread it actually came from, so the journal can
     // keep a subagent's turn out of the root conversation.
     expect(events.map((event) => (event.type === 'notification' ? event.threadId : null))).toEqual([

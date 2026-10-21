@@ -32,6 +32,7 @@ import {
   taggedRevisionOrigin,
   taggedTraffic,
   trafficTags,
+  candidateUpdateArguments,
   waitForEvacuationCapacity,
   waitForServingInstances
 } from './deploy-relay-blue-green.mjs'
@@ -445,7 +446,10 @@ function directorHarness({
   callerEmail,
   // The revision template's Cloud SQL transport; a Terraform apply changes it under the serving one.
   templateTransport,
-  spreadFailure
+  spreadFailure,
+  // The service-level cap gcloud's `--max` sets; Cloud Run divides it by traffic share.
+  serviceMaximum,
+  serviceCapSticks = false
 } = {}) {
   const state = {
     activeRevision: 'relay-00001-old',
@@ -474,6 +478,8 @@ function directorHarness({
     ]),
     nextRevision: 2,
     latestCreated: 'relay-00001-old',
+    serviceMaximum,
+    serviceCapClears: 0,
     templateTransport
   }
   const removed = []
@@ -483,6 +489,11 @@ function directorHarness({
   let pendingCleanupFailure = cleanupFailsBeforeRemoval
   const operations = {
     describeService: () => ({
+      metadata: {
+        annotations: state.serviceMaximum === undefined
+          ? {}
+          : { 'run.googleapis.com/maxScale': String(state.serviceMaximum) }
+      },
       status: {
         url: 'https://relay-hash-uc.a.run.app',
         latestCreatedRevisionName: state.latestCreated,
@@ -547,6 +558,10 @@ function directorHarness({
       state.latestCreated = revision
       state.tags.set(tag, revision)
       if (deployFailure) throw deployFailure
+    },
+    clearServiceMaximumInstances: () => {
+      state.serviceCapClears += 1
+      if (!serviceCapSticks) state.serviceMaximum = 100
     },
     listRevisions: () =>
       [...state.revisions].map(([name]) => ({ metadata: { name } })),
@@ -717,6 +732,46 @@ test('a multi-instance floor moves part of the traffic until every floor instanc
   assert.deepEqual(harness.trafficMoves, ['--to-tags=candidate-new=20', '--to-tags=candidate-new=100'])
   assert.deepEqual(harness.spreadWaits, [{ revision: 'relay-00003-new', required: 5 }])
   assert.equal(harness.state.activeRevision, 'relay-00003-new')
+})
+
+test('a candidate pins its own maximum, never the service-wide cap', () => {
+  const args = candidateUpdateArguments(
+    { service: 'relay', project: 'p', region: 'r', role: 'director' },
+    'candidate-new',
+    {},
+    'relay@sha256:abc',
+    5,
+    5,
+    '1'
+  )
+  assert.equal(args[args.indexOf('--max-instances') + 1], '5')
+  assert.ok(!args.includes('--max'))
+})
+
+test('a service cap below two full revisions is cleared before any candidate exists', async () => {
+  const harness = directorHarness({ servingMinimum: 5, serviceMaximum: 5 })
+  await deployDirector({ 'max-instances': '5' }, 'candidate-new', harness.operations)
+  assert.equal(harness.state.serviceCapClears, 1)
+  assert.equal(harness.state.serviceMaximum, 100)
+  assert.equal(harness.state.activeRevision, 'relay-00003-new')
+})
+
+test('a service cap with room for two revisions, or none, is left alone', async () => {
+  for (const serviceMaximum of [undefined, 10, 100]) {
+    const harness = directorHarness({ servingMinimum: 5, serviceMaximum })
+    await deployDirector({ 'max-instances': '5' }, 'candidate-new', harness.operations)
+    assert.equal(harness.state.serviceCapClears, 0)
+  }
+})
+
+test('a service cap that will not clear stops the deploy before traffic moves', async () => {
+  const harness = directorHarness({ servingMinimum: 5, serviceMaximum: 5, serviceCapSticks: true })
+  await assert.rejects(
+    deployDirector({ 'max-instances': '5' }, 'candidate-new', harness.operations),
+    /still caps instances at 5, below two revisions of 5/
+  )
+  assert.equal(harness.state.activeRevision, 'relay-00001-old')
+  assert.deepEqual(harness.trafficMoves, [])
 })
 
 test('a floor of one moves all traffic at once', async () => {

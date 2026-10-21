@@ -28,7 +28,7 @@
       "description": "채팅의 모양과 동작 방식을 선택하세요.",
       "names": {
         "title": "채팅 이름",
-        "description": "에이전트가 첫 메시지를 바탕으로 새 채팅의 이름을 생성합니다. 이름이 생성되지 않으면 Claude Chat 또는 Codex Chat으로 유지됩니다.",
+        "description": "에이전트가 첫 메시지를 바탕으로 새 채팅의 이름을 생성합니다. 이름이 생성되기 전까지는 첫 메시지가 표시됩니다.",
         "enable": "채팅 이름 자동 지정",
         "recipe": "채팅 이름",
         "recipeDescription": "새 채팅의 첫 메시지에서 짧은 이름을 생성합니다.",
@@ -1275,6 +1275,12 @@
       }
     },
     "components": {
+      "hostPicker": {
+        "searchHosts": "호스트 검색…",
+        "noHostsMatch": "일치하는 호스트가 없습니다.",
+        "moreHosts_one": "호스트 {{count}}개 더 있음. 이름으로 검색하세요.",
+        "moreHosts_other": "호스트 {{count}}개 더 있음. 이름으로 검색하세요."
+      },
       "CodexRestartChip": {
         "c72a5fb234": "다시 시작",
         "9263e75f49": "Codex는 이전 계정을 사용하고 있습니다",
@@ -3827,6 +3833,12 @@
             "connectedHostCount_one": "호스트 {{count}}개",
             "connectedHostCount_other": "호스트 {{count}}개",
             "connecting": "연결 중…",
+            "searchSshHosts": "SSH 호스트 검색…",
+            "noMatchingSshHosts": "일치하는 SSH 호스트가 없습니다.",
+            "moreSshHostMatches_one": "{{count}}개 더 일치합니다. 계속 입력해 범위를 좁히세요.",
+            "moreSshHostMatches_other": "{{count}}개 더 일치합니다. 계속 입력해 범위를 좁히세요.",
+            "moreSshHosts_one": "SSH 호스트 {{count}}개 더 찾기…",
+            "moreSshHosts_other": "SSH 호스트 {{count}}개 중에서 찾기…",
             "runtime_unavailable_transport_up": "Orca를 사용할 수 없습니다.",
             "runtime_workspace_window_closed": "워크스페이스 창이 닫혔습니다."
           },
@@ -5406,7 +5418,8 @@
         },
         "PendingWorktreeRow": {
           "af21e953d1": "워크트리 만들기 취소",
-          "188f6922a0": "취소"
+          "188f6922a0": "취소",
+          "creatingWorkspace": "워크스페이스 만드는 중…"
         },
         "ProjectGroupDeleteDialog": {
           "ca65b78f78": "취소",
@@ -12544,7 +12557,6 @@
         "sshManagedHostRemove": {
           "description": "{{label}}에서 Orca가 실행 중입니다. SSH 호스트의 Orca에서 중지…를 사용해 호스트에서 Orca를 제거하거나, 호스트가 없어졌다면 잊기…를 사용하세요. 그런 다음 이 SSH 호스트를 제거할 수 있습니다.",
           "open": "SSH 호스트의 Orca 열기",
-          "descriptionServers": "Orca가 {{label}}에서 실행 중입니다. 원격 Orca 서버에서 {{label}}의 Orca ⋯ 메뉴를 열고 '중지…'를 선택해 호스트에서 Orca를 제거하거나, 호스트가 없어졌다면 '삭제…'를 선택하세요. 그런 다음 이 SSH 호스트를 제거할 수 있습니다.",
           "openServers": "원격 Orca 서버 열기"
         },
         "managedServers": {
@@ -12568,7 +12580,6 @@
             "confirmForget": "이 데스크톱에서 잊기",
             "keepLinked": "연결 유지",
             "forgetDescription": "호스트에 연결하지 않고 여기서 이 서버의 연결을 해제합니다. 호스트가 다시 살아나면 서버가 그곳에서 계속 실행 중일 수 있습니다.",
-            "title": "{{host}}의 Orca",
             "orcaVersion": "이 호스트의 Orca: {{version}}",
             "stopOrcaDescription": "SSH 호스트에서 Orca를 중지하고 이 목록에서 제거합니다.",
             "updateOrcaOnHost": "이 호스트의 Orca 업데이트"
@@ -12913,9 +12924,6 @@
           "emptyDescription": "개발 머신, 클라우드 머신 또는 집에 있는 데스크톱을 페어링하세요. 이 컴퓨터가 절전 모드여도 세션은 그곳에서 계속 실행됩니다.",
           "movePaused": "이전 일시 중지됨",
           "shareTitle": "이 컴퓨터 공유",
-          "shareDescriptionNamed": "브라우저, 휴대폰 또는 다른 Orca에서 {{name}}로 작업할 수 있게 합니다.",
-          "shareDescription": "브라우저, 휴대폰 또는 다른 Orca에서 이 컴퓨터로 작업할 수 있게 합니다.",
-          "shareButton": "공유…",
           "done": "완료",
           "unreachableLead": "Orca가 이 서버에 연결하지 못했습니다.",
           "updateFailedLead": "마지막 업데이트가 완료되지 않았습니다.",
@@ -14305,8 +14313,8 @@
             "deleteReasonUnsupportedAgent": "{{value0}} 세션은 Orca에서 삭제할 수 없습니다.",
             "resumeInNewNativeChat": "새 채팅에서 재개",
             "resumeInNewCli": "새 터미널에서 재개",
-            "resumeInNewCliTooltipFork": "이 대화를 새 CLI 세션으로 포크합니다.",
-            "resumeInNewCliTooltipChat": "기본 채팅은 그대로 유지됩니다."
+            "resumeInNewCliTooltipFork": "이 대화의 복사본으로 새 터미널 에이전트 세션을 시작합니다.",
+            "resumeInNewCliTooltipChat": "이 채팅은 그대로 유지됩니다."
           },
           "AiVaultSessionDeleteDialog": {
             "title": "이 세션을 삭제할까요?",
@@ -18472,6 +18480,7 @@
         "notDoneOption": "설정이 변경되지 않았습니다.",
         "notDoneCommand": "명령이 실행되지 않았습니다.",
         "notDoneGoal": "목표가 변경되지 않았습니다.",
+        "notDoneQueuedEdit": "편집한 내용은 저장되지 않았습니다.",
         "restartFailed": "에이전트를 다시 시작하지 못했습니다.",
         "capacity": "이 채팅을 실행하는 컴퓨터의 Orca가 요청 한도에 도달했습니다. 해당 컴퓨터에서 Orca를 업데이트한 다음 다시 시도하세요.",
         "outcomeUnknown": "Orca가 무슨 일이 있었는지 확인하지 못했습니다. 채팅을 확인하세요.",
@@ -18633,6 +18642,7 @@
         "permissionFullAccessCodexDescription": "묻지 않습니다. 모든 파일을 편집하고 네트워크를 사용할 수 있습니다",
         "permissionFullAccessSharedDescription": "편집이나 명령 전에 묻지 않습니다",
         "pasteFailed": "붙여넣기 실패.",
+        "tooManySkills": "{{agent}}에 메시지를 보내지 못했습니다. 선택한 스킬 파일을 {{limit}}개 이하로 줄인 후 다시 시도하세요.",
         "commandAttachmentsUnsupported": "채팅 세션 명령을 사용하기 전에 첨부 파일을 제거하세요.",
         "optionValueShort": {
           "minimal": "최소",
@@ -18654,6 +18664,9 @@
         "interruptedCallsLabel": "중단된 도구 호출: {{value0}}",
         "runningPreview": "{{preview}} 실행 중",
         "runningCommand": "실행 명령",
+        "showFullOutput": "전체 출력 보기",
+        "fullOutputFailed": "전체 출력을 불러오지 못했습니다.",
+        "fullOutputPartial": "{{total}} 중 {{shown}}을(를) 표시하는 중입니다.",
         "runningNamedPreview": "{{toolName}} {{preview}} 실행 중",
         "runningNamed": "{{toolName}} 실행 중",
         "ranCommandOneToolSummary": "{{commandCount}} 명령을 실행하고 {{toolCount}} 도구를 사용했습니다.",
@@ -18952,6 +18965,7 @@
         "pendingWork": "이 명령을 사용하기 전에 보류 중인 작업과 메시지가 완료될 때까지 기다리십시오."
       },
       "drop": {
+        "messageTitle": "놓아서 이 메시지에 첨부",
         "title": "이 채팅에 첨부하려면 드롭하세요.",
         "subtitle": "파일은 에이전트가 읽을 수 있는 경로로 메시지에 추가됩니다."
       },
@@ -19029,6 +19043,7 @@
         "cancelEditing": "편집 취소",
         "editChanged": "편집하는 동안 이 메시지가 변경되었습니다. 편집한 내용은 채팅 입력란에 있습니다.",
         "editChangedPrompt": "편집하는 동안 이 메시지가 변경되었습니다. 에이전트에 답하면 편집한 내용이 채팅 입력란에 표시됩니다.",
+        "editChangedNotSaved": "편집하는 동안 이 메시지가 변경되었습니다. 편집한 내용은 저장되지 않았습니다.",
         "editFailed": "이 메시지는 편집할 수 없습니다.",
         "editGone": "이 메시지는 이미 전송되었거나 삭제되었습니다. 편집한 내용은 채팅 입력란에 있습니다.",
         "editGonePrompt": "이 메시지는 이미 전송되었거나 삭제되었습니다. 에이전트에 답하면 편집한 내용이 채팅 입력란에 표시됩니다.",
@@ -19038,7 +19053,9 @@
         "collapse": "접기",
         "expand": "펼치기",
         "queued": "대기 중",
-        "clearAll": "모두 지우기"
+        "clearAll": "모두 지우기",
+        "pasteOrDropImages": "이미지를 붙여넣거나 끌어다 놓기",
+        "saveNeedsContent": "저장하려면 텍스트나 이미지를 추가하세요"
       },
       "thought": "생각함",
       "thoughtForDuration": "{{duration}} 동안 생각함",
@@ -19100,8 +19117,8 @@
     "tab": {
       "bar": {
         "SortableTabContextMenu": {
-          "switchToTerminalView": "터미널 에이전트로 전환",
-          "switchToChatView": "채팅 UI로 전환",
+          "switchToTerminalView": "터미널 에이전트로 계속하기",
+          "switchToChatView": "채팅 UI에서 계속하기",
           "closeTabsToLeft": "왼쪽의 모든 탭 닫기"
         },
         "BrowserTab": {
@@ -20050,6 +20067,7 @@
       "empty": "하위 에이전트를 찾을 수 없습니다."
     },
     "antigravityReferenceDescription": "이 대본을 참고 자료로 사용하여 새로운 Antigravity CLI 대화에서 계속합니다.",
+    "searchHitSourceHost": "{{value0}}에서 찾음",
     "antigravityIdeToCli": "IDE → CLI",
     "antigravity2ToCli": "2.0 → CLI",
     "continueInCli": "CLI에서 계속",
@@ -20468,7 +20486,17 @@
   "tabHoverCard": {
     "browser": "브라우저",
     "editor": "편집기",
-    "terminal": "터미널"
+    "terminal": "터미널",
+    "namingFailure": {
+      "regenerating": "다시 생성 중…",
+      "regenerate": "이름 다시 생성",
+      "title": "이 채팅의 이름을 지정하지 못했습니다",
+      "description": "채팅 이름 에이전트가 오류로 중지되어, 채팅은 첫 메시지를 이름으로 유지합니다.",
+      "viewError": "오류 보기",
+      "dialogTitle": "채팅 자동 이름 지정 실패",
+      "dialogDescriptionStart": "Orca가",
+      "dialogDescriptionEnd": "의 이름을 첫 메시지로부터 생성하지 못했습니다."
+    }
   },
   "jira": {
     "savedFilters": {

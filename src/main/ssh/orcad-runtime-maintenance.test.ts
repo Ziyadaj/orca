@@ -1,6 +1,7 @@
 import { rmSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listEnvironments } from '../../shared/runtime-environment-store'
+import { ORCAD_UPDATE_ADMISSION_FENCE_MS } from '../../shared/orcad-terminal-census'
 import { recordManagedOrcadMigration } from '../../shared/runtime-environment-managed-orcad-store'
 import { orcadMigrationCutoverFixture } from './orcad-migration-cutover-fixture'
 import { writeOrcadMigrationSourceCutover } from './orcad-migration-cutover-journal'
@@ -150,9 +151,19 @@ describe('updateManagedOrcadEnvironment', () => {
     mocks.census.mockResolvedValueOnce(idle).mockResolvedValue(opened)
     mocks.deploy.mockResolvedValueOnce({ outcome: 'installed-and-activated', fullVersion: 'v3' })
     await updateManagedOrcadEnvironment(harness.userDataPath, { selector: 'Managed' })
-    const recount = mocks.deploy.mock.calls[0]?.[0]?.recountCensus
-    expect(recount).toBeTypeOf('function')
-    await expect(recount()).resolves.toEqual(opened)
+    const deployed = mocks.deploy.mock.calls[0]?.[0]
+    expect(deployed?.recountCensus).toBeTypeOf('function')
+    await expect(deployed!.recountCensus()).resolves.toEqual(opened)
+    // Only the last count closes the server's terminal admission; the first precedes the upload.
+    expect(mocks.census.mock.calls.map((call) => call[4])).toEqual([
+      { releaseFinishedAutomationTerminals: true },
+      {
+        releaseFinishedAutomationTerminals: true,
+        closeAdmissionForMs: ORCAD_UPDATE_ADMISSION_FENCE_MS
+      }
+    ])
+    await deployed!.releaseIncumbentAdmission()
+    expect(mocks.census.mock.calls[2]?.[4]).toEqual({ closeAdmissionForMs: 0 })
   })
 
   it('forwards anew after an activation, since the new slot may bind another port', async () => {

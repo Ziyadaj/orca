@@ -130,6 +130,7 @@ export function managedOrcadDeployPolicy(
 ): {
   census: OrcadTerminalCensus
   recountCensus: () => Promise<OrcadTerminalCensus>
+  releaseIncumbentAdmission: () => Promise<void>
   censusRecord: OrcadActivationRecord
   admitRecord: (record: OrcadActivationRecord, candidateVersion: string) => string | null
 } {
@@ -141,6 +142,8 @@ export function managedOrcadDeployPolicy(
   return {
     census,
     recountCensus: async () => census,
+    // Nothing was fenced: this recount never asks the server.
+    releaseIncumbentAdmission: async () => {},
     censusRecord: context.activationRecord,
     // Why: a host another desktop stopped may hold state its newer build migrated, and this
     // path has no linked record to check first, so only the fenced read can refuse it.

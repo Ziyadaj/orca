@@ -28,7 +28,7 @@
       "description": "选择聊天的外观和行为方式。",
       "names": {
         "title": "聊天名称",
-        "description": "使用智能体根据首条消息为新聊天生成名称。未生成名称时，聊天仍显示为 Claude Chat 或 Codex Chat。",
+        "description": "使用智能体根据首条消息为新聊天生成名称。生成名称前，聊天显示其首条消息。",
         "enable": "自动为聊天命名",
         "recipe": "聊天名称",
         "recipeDescription": "根据新聊天的首条消息生成简短名称。",
@@ -1275,6 +1275,12 @@
       }
     },
     "components": {
+      "hostPicker": {
+        "searchHosts": "搜索主机…",
+        "noHostsMatch": "没有匹配的主机。",
+        "moreHosts_one": "还有 {{count}} 个主机，请按名称搜索。",
+        "moreHosts_other": "还有 {{count}} 个主机，请按名称搜索。"
+      },
       "CodexRestartChip": {
         "c72a5fb234": "重新启动",
         "9263e75f49": "Codex 正在使用之前的账户",
@@ -3827,6 +3833,12 @@
             "connectedHostCount_one": "{{count}} 个主机",
             "connectedHostCount_other": "{{count}} 个主机",
             "connecting": "正在连接…",
+            "searchSshHosts": "搜索 SSH 主机…",
+            "noMatchingSshHosts": "没有匹配的 SSH 主机。",
+            "moreSshHostMatches_one": "还有 {{count}} 个匹配项，继续输入以缩小范围。",
+            "moreSshHostMatches_other": "还有 {{count}} 个匹配项，继续输入以缩小范围。",
+            "moreSshHosts_one": "在另外 {{count}} 个 SSH 主机中查找…",
+            "moreSshHosts_other": "在另外 {{count}} 个 SSH 主机中查找…",
             "runtime_unavailable_transport_up": "Orca 不可用",
             "runtime_workspace_window_closed": "工作区窗口已关闭"
           },
@@ -5406,7 +5418,8 @@
         },
         "PendingWorktreeRow": {
           "af21e953d1": "取消工作树创建",
-          "188f6922a0": "取消"
+          "188f6922a0": "取消",
+          "creatingWorkspace": "正在创建工作区…"
         },
         "ProjectGroupDeleteDialog": {
           "ca65b78f78": "取消",
@@ -12558,7 +12571,6 @@
         "sshManagedHostRemove": {
           "description": "Orca 正在 {{label}} 上运行。请在“SSH 主机上的 Orca”中使用“停止…”从主机移除 Orca；如果主机已不存在，请使用“忘记…”。之后即可移除此 SSH 主机。",
           "open": "打开“SSH 主机上的 Orca”",
-          "descriptionServers": "Orca 正在 {{label}} 上运行。请在“远程 Orca 服务器”中打开 {{label}} 上的 Orca 的 ⋯ 菜单，选择“停止…”从主机上移除 Orca；如果主机已不存在，请选择“忘记…”。之后即可移除此 SSH 主机。",
           "openServers": "打开远程 Orca 服务器"
         },
         "managedServers": {
@@ -12582,7 +12594,6 @@
             "confirmForget": "在此桌面上忘记",
             "keepLinked": "保持关联",
             "forgetDescription": "在此处取消关联此服务器，而不联系其主机。如果主机恢复，服务器可能仍在那里运行。",
-            "title": "{{host}} 上的 Orca",
             "orcaVersion": "此主机上的 Orca：{{version}}",
             "stopOrcaDescription": "停止 SSH 主机上的 Orca，并将其从此列表中移除。",
             "updateOrcaOnHost": "更新此主机上的 Orca"
@@ -12913,9 +12924,6 @@
           "emptyDescription": "配对开发机、云主机或家里的台式机。此电脑休眠时，会话会继续在那里运行。",
           "movePaused": "迁移已暂停",
           "shareTitle": "共享此电脑",
-          "shareDescriptionNamed": "让浏览器、手机或另一个 Orca 在 {{name}} 上工作。",
-          "shareDescription": "让浏览器、手机或另一个 Orca 在此电脑上工作。",
-          "shareButton": "共享…",
           "done": "完成",
           "unreachableLead": "Orca 无法访问此服务器。",
           "updateFailedLead": "上次更新未完成。",
@@ -14305,8 +14313,8 @@
             "deleteReasonUnsupportedAgent": "{{value0}} 会话无法在 Orca 中删除。",
             "resumeInNewNativeChat": "在新聊天中恢复",
             "resumeInNewCli": "在新终端中恢复",
-            "resumeInNewCliTooltipFork": "将此对话派生到新的 CLI 会话中。",
-            "resumeInNewCliTooltipChat": "本机聊天保持不变。"
+            "resumeInNewCliTooltipFork": "使用此对话的副本启动新的终端智能体会话。",
+            "resumeInNewCliTooltipChat": "此聊天保持不变。"
           },
           "AiVaultSessionDeleteDialog": {
             "title": "要删除此会话吗？",
@@ -18437,6 +18445,7 @@
         "notDoneOption": "设置未更改。",
         "notDoneCommand": "命令未运行。",
         "notDoneGoal": "目标未更改。",
+        "notDoneQueuedEdit": "你的编辑未保存。",
         "restartFailed": "智能体无法重新启动。",
         "capacity": "运行此聊天的计算机上的 Orca 已达到请求上限。请在那台计算机上更新 Orca，然后重试。",
         "outcomeUnknown": "Orca 无法确认发生了什么。请查看聊天。",
@@ -18598,6 +18607,7 @@
         "permissionFullAccessCodexDescription": "从不询问；可以编辑任何文件并使用网络",
         "permissionFullAccessSharedDescription": "编辑或运行命令前从不询问",
         "pasteFailed": "粘贴失败。",
+        "tooManySkills": "消息未发送给 {{agent}}。请将所选技能文件减少到最多 {{limit}} 个，然后重试。",
         "commandAttachmentsUnsupported": "使用聊天会话命令前，请先移除附件。",
         "optionValueShort": {
           "minimal": "最小",
@@ -18619,6 +18629,9 @@
         "interruptedCallsLabel": "已中断的工具调用：{{value0}}",
         "runningPreview": "正在运行 {{preview}}",
         "runningCommand": "运行命令",
+        "showFullOutput": "显示完整输出",
+        "fullOutputFailed": "无法加载完整输出。",
+        "fullOutputPartial": "正在显示 {{total}} 中的 {{shown}}。",
         "runningNamedPreview": "运行 {{toolName}} {{preview}}",
         "runningNamed": "正在运行 {{toolName}}",
         "ranCommandOneToolSummary": "运行 {{commandCount}} 命令并使用 {{toolCount}} 工具",
@@ -18917,6 +18930,7 @@
         "pendingWork": "在使用此命令之前，请等待挂起的工作和消息完成。"
       },
       "drop": {
+        "messageTitle": "拖放以附加到此消息",
         "title": "拖放以附加到此聊天",
         "subtitle": "文件将作为智能体可以读取的路径添加到您的消息中。"
       },
@@ -18994,6 +19008,7 @@
         "cancelEditing": "取消编辑",
         "editChanged": "你编辑时此消息已更改。你编辑的内容已放入聊天输入框。",
         "editChangedPrompt": "你编辑时此消息已更改。回答智能体后，你编辑的内容会出现在聊天输入框中。",
+        "editChangedNotSaved": "你编辑时此消息已更改。你的编辑未保存。",
         "editFailed": "此消息无法编辑。",
         "editGone": "此消息已发送或移除。你编辑的内容已放入聊天输入框。",
         "editGonePrompt": "此消息已发送或移除。回答智能体后，你编辑的内容会出现在聊天输入框中。",
@@ -19003,7 +19018,9 @@
         "collapse": "收起",
         "expand": "展开",
         "queued": "已排队",
-        "clearAll": "全部清除"
+        "clearAll": "全部清除",
+        "pasteOrDropImages": "粘贴或拖入图片",
+        "saveNeedsContent": "添加文字或图片后才能保存"
       },
       "thought": "已思考",
       "thoughtForDuration": "思考了 {{duration}}",
@@ -19065,8 +19082,8 @@
     "tab": {
       "bar": {
         "SortableTabContextMenu": {
-          "switchToTerminalView": "切换到终端智能体",
-          "switchToChatView": "切换到聊天UI",
+          "switchToTerminalView": "使用终端智能体继续",
+          "switchToChatView": "在聊天界面中继续",
           "closeTabsToLeft": "关闭左侧的所有选项卡"
         },
         "BrowserTab": {
@@ -20050,6 +20067,7 @@
       "empty": "未找到子智能体。"
     },
     "antigravityReferenceDescription": "使用此记录作为参考继续新的Antigravity CLI 对话。",
+    "searchHitSourceHost": "在 {{value0}} 上找到",
     "antigravityIdeToCli": "IDE → CLI",
     "antigravity2ToCli": "2.0 → 命令行界面",
     "continueInCli": "在 CLI 中继续",
@@ -20468,7 +20486,17 @@
   "tabHoverCard": {
     "browser": "浏览器",
     "editor": "编辑器",
-    "terminal": "终端"
+    "terminal": "终端",
+    "namingFailure": {
+      "regenerating": "正在重新生成…",
+      "regenerate": "重新生成名称",
+      "title": "无法为此聊天命名",
+      "description": "聊天命名代理因错误而停止，因此聊天将保留其第一条消息作为名称。",
+      "viewError": "查看错误",
+      "dialogTitle": "聊天自动命名失败",
+      "dialogDescriptionStart": "Orca 无法根据第一条消息为",
+      "dialogDescriptionEnd": "生成名称。"
+    }
   },
   "jira": {
     "savedFilters": {
