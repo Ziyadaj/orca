@@ -28,6 +28,10 @@ export type SessionAskMethodIo = {
 
 const NO_EFFECT = 'No question was sent.'
 
+/** Bounds how many of the host's long-poll slots session asks can hold at once. */
+const MAX_IN_FLIGHT_SESSION_ASKS = 4
+let inFlightSessionAsks = 0
+
 export async function handleSessionAsk(
   params: Pick<z.infer<typeof SessionAskParams>, 'to' | 'question' | 'timeoutMs'>,
   ctx: Pick<RpcContext, 'orchestrationCaller' | 'signal'>,
@@ -74,13 +78,24 @@ export async function handleSessionAsk(
       `This Orca is not running its agent-session host. ${NO_EFFECT}`
     )
   }
-  return io.run(io.deps, {
-    asker: { sessionId: caller.sessionId, name: io.nameOf(caller.sessionId) },
-    target: { sessionId: live, name: io.nameOf(live) },
-    question: params.question,
-    timeoutMs: clampOrchestrationAskTimeoutMs(params.timeoutMs),
-    signal: ctx.signal
-  })
+  if (inFlightSessionAsks >= MAX_IN_FLIGHT_SESSION_ASKS) {
+    throw new OrchestrationError(
+      'session_ask_busy',
+      `${MAX_IN_FLIGHT_SESSION_ASKS} session asks are already waiting; retry when one finishes. ${NO_EFFECT}`
+    )
+  }
+  inFlightSessionAsks += 1
+  try {
+    return await io.run(io.deps, {
+      asker: { sessionId: caller.sessionId, name: io.nameOf(caller.sessionId) },
+      target: { sessionId: live, name: io.nameOf(live) },
+      question: params.question,
+      timeoutMs: clampOrchestrationAskTimeoutMs(params.timeoutMs),
+      signal: ctx.signal
+    })
+  } finally {
+    inFlightSessionAsks -= 1
+  }
 }
 
 function liveSessionId(sessionId: OrcaSessionId, db: OrchestrationDb | null): OrcaSessionId | null {

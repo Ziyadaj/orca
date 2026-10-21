@@ -3,6 +3,7 @@ import { isOrcaSessionId, type OrcaSessionId } from '../../../../../../shared/or
 import { classifyRuntimeLongPoll } from '../../../../runtime-rpc/runtime-rpc-long-poll'
 import type { OrchestrationSessionCaller } from '../../../../orchestration/orchestration-caller-identity'
 import { OrchestrationDb } from '../../../../orchestration/db'
+import type { runSessionAsk } from '../../../../session-ask/session-ask-exchange'
 import { handleSessionAsk, type SessionAskMethodIo } from './session-ask-methods'
 
 const { readSessionRecipient, refuseUndeliverableSessionRecipient } = vi.hoisted(() => ({
@@ -38,6 +39,8 @@ function io(overrides: Partial<SessionAskMethodIo> = {}): SessionAskMethodIo {
   return {
     db: new OrchestrationDb(':memory:'),
     deps: {
+      liveSessionId: () => TARGET_LIVE,
+      queueKey: (id) => id,
       gateFacts: vi.fn(),
       journal: vi.fn(),
       send: vi.fn(),
@@ -119,9 +122,41 @@ describe('orchestration.sessionAsk', () => {
     )
   })
 
-  it('keeps the socket alive like orchestration.ask', () => {
+  it('keeps the socket alive outside the orchestration.ask pool', () => {
     expect(
       classifyRuntimeLongPoll({ id: '1', authToken: 't', method: 'orchestration.sessionAsk' })
-    ).toBe('ask')
+    ).toBe('wait')
+  })
+
+  it('refuses a fifth ask while four are in flight, so asks never starve other long polls', async () => {
+    const releases: (() => void)[] = []
+    const run = vi.fn<typeof runSessionAsk>(
+      (_deps, input) =>
+        new Promise((resolve) =>
+          releases.push(() =>
+            resolve({ status: 'answered', answer: 'x', target: input.target, timeoutMs: 1 })
+          )
+        )
+    )
+    const methodIo = io({ run })
+    const asks = Array.from({ length: 4 }, () =>
+      handleSessionAsk({ to: TARGET, question: 'q' }, { orchestrationCaller: caller }, methodIo)
+    )
+    await expect(
+      handleSessionAsk({ to: TARGET, question: 'q' }, { orchestrationCaller: caller }, methodIo)
+    ).rejects.toMatchObject({ code: 'session_ask_busy' })
+    for (const release of releases) {
+      release()
+    }
+    await Promise.all(asks)
+    run.mockImplementation(async (_deps, input) => ({
+      status: 'answered',
+      answer: 'x',
+      target: input.target,
+      timeoutMs: 1
+    }))
+    await expect(
+      handleSessionAsk({ to: TARGET, question: 'q' }, { orchestrationCaller: caller }, methodIo)
+    ).resolves.toMatchObject({ status: 'answered' })
   })
 })

@@ -17,6 +17,7 @@ export type SessionAskJournalRead =
         | 'failure'
         | 'cancellation'
         | 'superseded'
+        | 'no-reply'
     }
 
 /**
@@ -54,7 +55,8 @@ export function readSessionAskAnswer(
       return { state: 'failed', reason: outcome }
     }
   }
-  return { state: 'answered', text: mainAgentText(snapshot.items, turnItemId) }
+  const text = finalReplyText(snapshot.items, turnItemId)
+  return text ? { state: 'answered', text } : { state: 'failed', reason: 'no-reply' }
 }
 
 function openedTurnItemId(
@@ -79,18 +81,26 @@ function openedTurnItemId(
   return null
 }
 
-function mainAgentText(items: readonly AgentJournalRenderItem[], turnItemId: string): string {
-  return items
-    .filter(
-      (item) =>
-        !item.agentId &&
-        item.turnScope?.kind === 'turn' &&
-        item.turnScope.turnItemId === turnItemId &&
-        item.body.kind === 'message' &&
-        item.body.role === 'assistant'
-    )
-    .flatMap((item) => (item.body.kind === 'message' ? item.body.blocks.filter(isTextBlock) : []))
-    .map((block) => block.text)
-    .filter((text) => text.trim() !== '')
-    .join('\n\n')
+/** The turn's final main-agent message, as the spec asks: narration before it is not the reply. */
+function finalReplyText(items: readonly AgentJournalRenderItem[], turnItemId: string): string {
+  let reply = ''
+  for (const item of items) {
+    if (
+      !item.agentId &&
+      item.turnScope?.kind === 'turn' &&
+      item.turnScope.turnItemId === turnItemId &&
+      item.body.kind === 'message' &&
+      item.body.role === 'assistant'
+    ) {
+      const text = item.body.blocks
+        .filter(isTextBlock)
+        .map((block) => block.text)
+        .join('')
+        .trim()
+      if (text) {
+        reply = text
+      }
+    }
+  }
+  return reply
 }

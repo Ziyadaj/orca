@@ -9,13 +9,14 @@ import type {
   AgentJournalMessageItem,
   AgentJournalSnapshot
 } from '../../../shared/agent-session-journal-types'
-import type { OrcaSessionId } from '../../../shared/orca-session-address'
+import { isOrcaSessionId, type OrcaSessionId } from '../../../shared/orca-session-address'
 import { sessionAskQuestionText, sessionAskSource } from '../../../shared/session-ask-message'
 import { AGENT_SESSION_NOT_ATTACHED } from '../../native-chat/agent-session-wire/structured-agent-session-mutation-admission'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
 import { mintAgentSessionOperationId } from '../orchestration/structured-pointer-operation-id'
 import { sendAgentTurn, type StructuredSessionTurnOutcome } from '../orchestration/send-agent-turn'
 import { readStructuredSessionGateFacts } from '../orchestration/structured-mailbox-pointer-host'
+import { canonicalOrcaSessionId } from '../orchestration/canonical-orca-session-id'
 import type { OrchestrationDb } from '../orchestration/db'
 import { structuredSessionMailTarget } from '../orchestration/structured-session-mail-target'
 import type { StructuredSessionGateFacts } from '../orchestration/structured-session-pointer-delivery'
@@ -42,7 +43,11 @@ export type SessionAskResult = {
 type SessionAskJournal = Pick<AgentJournalSnapshot, 'items' | 'submissions'>
 
 export type SessionAskDeps = {
-  /** Null when the chat is closed or unreadable here. */
+  /** The chat's live session after any /clear; null once its tab is closed or it left this host. */
+  liveSessionId(sessionId: string): OrcaSessionId | null
+  /** One key per conversation, so asks to any session of a /clear lineage share a queue. */
+  queueKey(sessionId: string): string
+  /** Null when the chat's journal is unreadable here. */
   gateFacts(sessionId: string): Promise<StructuredSessionGateFacts | null>
   journal(sessionId: string): Promise<SessionAskJournal | null>
   /** Null when the chat is not attached. */
@@ -60,23 +65,27 @@ export type SessionAskDeps = {
   pollMs?: number
 }
 
+type SessionAskInput = {
+  asker: SessionAskParty
+  target: SessionAskParty
+  question: string
+  timeoutMs: number
+  signal?: AbortSignal
+}
+
 const DEFAULT_POLL_MS = 5_000
 
 const targetQueues = new Map<string, Promise<unknown>>()
 
 export function runSessionAsk(
   deps: SessionAskDeps,
-  input: {
-    asker: SessionAskParty
-    target: SessionAskParty
-    question: string
-    timeoutMs: number
-    signal?: AbortSignal
-  }
+  input: SessionAskInput
 ): Promise<SessionAskResult> {
-  const key = input.target.sessionId
+  // Time spent queued counts: the caller's transport gives up on its own clock.
+  const deadline = deps.now() + input.timeoutMs
+  const key = deps.queueKey(input.target.sessionId)
   const previous = targetQueues.get(key) ?? Promise.resolve()
-  const run = previous.then(() => exchange(deps, input))
+  const run = previous.then(() => exchange(deps, input, deadline))
   const settled = run.catch(() => {})
   targetQueues.set(key, settled)
   void settled.then(() => {
@@ -89,10 +98,11 @@ export function runSessionAsk(
 
 async function exchange(
   deps: SessionAskDeps,
-  input: Parameters<typeof runSessionAsk>[1]
+  input: SessionAskInput,
+  deadline: number
 ): Promise<SessionAskResult> {
-  const { target, timeoutMs, signal } = input
-  const deadline = deps.now() + timeoutMs
+  const { timeoutMs, signal } = input
+  let target = input.target
   const result = (
     status: SessionAskStatus,
     answer: string | null = null,
@@ -103,21 +113,35 @@ async function exchange(
 
   // Busy is anything but idle: a pending approval counts, so a question never answers it.
   while (true) {
-    const facts = await deps.gateFacts(target.sessionId)
+    const stop = stopped()
+    if (stop) {
+      return stop
+    }
+    const live = deps.liveSessionId(input.target.sessionId)
+    if (!live) {
+      return result('target-closed')
+    }
+    target = { ...target, sessionId: live }
+    const facts = await deps.gateFacts(live)
     if (!facts) {
       return result('target-closed')
     }
     if (!facts.turnRunning && !facts.awaitingHuman) {
       break
     }
-    const stop = stopped() ?? (await waitForEdge(deps, target.sessionId, deadline, signal))
-    if (stop) {
-      return stop
+    const waited = await waitForEdge(live)
+    if (waited) {
+      return waited
     }
+  }
+  const sentTo = target.sessionId
+  const beforeSend = stopped()
+  if (beforeSend) {
+    return beforeSend
   }
 
   const outcome = await deps.send({
-    sessionId: target.sessionId,
+    sessionId: sentTo,
     body: {
       kind: 'message',
       role: 'user',
@@ -143,10 +167,11 @@ async function exchange(
   }
 
   while (true) {
-    const [facts, journal] = await Promise.all([
-      deps.gateFacts(target.sessionId),
-      deps.journal(target.sessionId)
-    ])
+    // A /clear after the send ends the turn the question was in.
+    if (deps.liveSessionId(input.target.sessionId) !== sentTo) {
+      return result('target-closed')
+    }
+    const [facts, journal] = await Promise.all([deps.gateFacts(sentTo), deps.journal(sentTo)])
     if (!facts || !journal) {
       return result('target-closed')
     }
@@ -164,29 +189,27 @@ async function exchange(
         return result('answered', read.text)
       }
     }
-    const stop = stopped() ?? (await waitForEdge(deps, target.sessionId, deadline, signal))
-    if (stop) {
-      return stop
+    const waited = stopped() ?? (await waitForEdge(sentTo))
+    if (waited) {
+      return waited
     }
   }
 
-  async function waitForEdge(
-    d: SessionAskDeps,
-    sessionId: string,
-    until: number,
-    abort: AbortSignal | undefined
-  ): Promise<SessionAskResult | null> {
+  async function waitForEdge(sessionId: string): Promise<SessionAskResult | null> {
     await new Promise<void>((resolve) => {
-      const ms = Math.max(0, Math.min(d.pollMs ?? DEFAULT_POLL_MS, until - d.now()))
+      let unsubscribe = (): void => {}
       const done = (): void => {
         clearTimeout(timer)
         unsubscribe()
-        abort?.removeEventListener('abort', done)
+        signal?.removeEventListener('abort', done)
         resolve()
       }
-      const timer = setTimeout(done, ms)
-      const unsubscribe = d.onTurnEdge(sessionId, done)
-      abort?.addEventListener('abort', done, { once: true })
+      const timer = setTimeout(
+        done,
+        Math.max(0, Math.min(deps.pollMs ?? DEFAULT_POLL_MS, deadline - deps.now()))
+      )
+      unsubscribe = deps.onTurnEdge(sessionId, done)
+      signal?.addEventListener('abort', done, { once: true })
     })
     return stopped()
   }
@@ -205,10 +228,13 @@ export function createSessionAskDeps(db: OrchestrationDb | null): SessionAskDeps
   }
   return {
     // Closed is the user closing the tab, never an idle-released agent: sending restarts that one.
-    gateFacts: async (sessionId) =>
-      structuredSessionMailTarget(sessionId, db)?.sessionId === sessionId
-        ? readStructuredSessionGateFacts(sessionId)
-        : null,
+    liveSessionId: (sessionId) => {
+      const live = structuredSessionMailTarget(sessionId, db)?.sessionId
+      return live && isOrcaSessionId(live) ? live : null
+    },
+    queueKey: (sessionId) =>
+      isOrcaSessionId(sessionId) ? canonicalOrcaSessionId(sessionId) : sessionId,
+    gateFacts: (sessionId) => readStructuredSessionGateFacts(sessionId),
     journal: async (sessionId) => {
       try {
         return await host.journalSnapshot(sessionId)

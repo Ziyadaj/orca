@@ -64,7 +64,7 @@ describe('readSessionAskAnswer', () => {
     expect(readSessionAskAnswer(snapshot, CM)).toEqual({ state: 'pending' })
   })
 
-  it('answers with the main agent texts once the settled turn is tombstoned', () => {
+  it('answers with the final main-agent message, skipping narration and subagents', () => {
     const snapshot = {
       items: [
         userItem(),
@@ -74,10 +74,7 @@ describe('readSessionAskAnswer', () => {
       ],
       submissions: [submission('accepted')]
     }
-    expect(readSessionAskAnswer(snapshot, CM)).toEqual({
-      state: 'answered',
-      text: 'first\n\nsecond'
-    })
+    expect(readSessionAskAnswer(snapshot, CM)).toEqual({ state: 'answered', text: 'second' })
   })
 
   it('finds the turn through the orca submission key, as Codex records it', () => {
@@ -146,5 +143,10 @@ describe('readSessionAskAnswer', () => {
     expect(
       readSessionAskAnswer({ items: [failed], submissions: [submission('accepted')] }, CM)
     ).toEqual({ state: 'failed', reason: 'failure' })
+  })
+
+  it('fails a settled turn that left no reply text', () => {
+    const snapshot = { items: [userItem()], submissions: [submission('accepted')] }
+    expect(readSessionAskAnswer(snapshot, CM)).toEqual({ state: 'failed', reason: 'no-reply' })
   })
 })

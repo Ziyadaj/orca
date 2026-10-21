@@ -68,6 +68,7 @@ type Fake = {
   sent: { sessionId: string; body: AgentJournalMessageItem }[]
   facts: Map<string, StructuredSessionGateFacts | null>
   journals: Map<string, Journal | null>
+  live: Map<string, OrcaSessionId | null>
   edge(sessionId: string): void
 }
 
@@ -76,6 +77,7 @@ function fake(): Fake {
   const journals = new Map<string, Journal | null>()
   const sent: Fake['sent'] = []
   const listeners = new Map<string, Set<() => void>>()
+  const live = new Map<string, OrcaSessionId | null>()
   let n = 0
   const deps: SessionAskDeps = {
     gateFacts: async (id) => (facts.has(id) ? (facts.get(id) ?? null) : IDLE),
@@ -92,6 +94,8 @@ function fake(): Fake {
       listeners.set(id, set)
       return () => set.delete(wake)
     },
+    liveSessionId: (id) => (live.has(id) ? (live.get(id) ?? null) : sid(id)),
+    queueKey: (id) => id,
     now: () => Date.now(),
     newOperationId: () => `op${++n}`,
     pollMs: 5
@@ -101,6 +105,7 @@ function fake(): Fake {
     sent,
     facts,
     journals,
+    live,
     edge: (id) => {
       for (const wake of listeners.get(id) ?? []) {
         wake()
@@ -182,7 +187,7 @@ describe('runSessionAsk', () => {
 
   it('reports a target that closed before the send, without sending', async () => {
     const f = fake()
-    f.facts.set(T.sessionId, null)
+    f.live.set(T.sessionId, null)
     await expect(ask(f)).resolves.toMatchObject({ status: 'target-closed', answer: null })
     expect(f.sent).toHaveLength(0)
   })
@@ -191,7 +196,7 @@ describe('runSessionAsk', () => {
     const f = fake()
     f.deps.send = async () => {
       f.journals.set(T.sessionId, { items: [], submissions: [submission('cm1')] })
-      f.facts.set(T.sessionId, null)
+      f.live.set(T.sessionId, null)
       return { kind: 'sent', clientMessageId: 'cm1', submission: submission('cm1') }
     }
     await expect(ask(f)).resolves.toMatchObject({ status: 'target-closed', answer: null })
@@ -209,6 +214,57 @@ describe('runSessionAsk', () => {
     const pending = ask(f, T, { signal: controller.signal })
     controller.abort()
     await expect(pending).resolves.toMatchObject({ status: 'cancelled', answer: null })
+  })
+
+  it('asks the live session after a /clear that lands while it waits', async () => {
+    const f = fake()
+    const cleared = sid('claude_bbbbbbbb_0000_4000_8000_000000000009')
+    f.facts.set(T.sessionId, { turnRunning: true, awaitingHuman: false })
+    const pending = ask(f)
+    await new Promise((r) => setTimeout(r, 15))
+    f.live.set(T.sessionId, cleared)
+    f.edge(T.sessionId)
+    await expect(pending).resolves.toMatchObject({
+      status: 'answered',
+      target: { sessionId: cleared }
+    })
+    expect(f.sent.map((s) => s.sessionId)).toEqual([cleared])
+  })
+
+  it('reports a /clear after the send as closed, since the question went with the old turn', async () => {
+    const f = fake()
+    f.deps.send = async () => {
+      f.journals.set(T.sessionId, { items: [], submissions: [submission('cm1')] })
+      f.live.set(T.sessionId, sid('claude_bbbbbbbb_0000_4000_8000_000000000009'))
+      return { kind: 'sent', clientMessageId: 'cm1', submission: submission('cm1') }
+    }
+    await expect(ask(f)).resolves.toMatchObject({ status: 'target-closed' })
+  })
+
+  it('never sends a queued ask whose caller gave up while it waited its turn', async () => {
+    const f = fake()
+    const send = f.deps.send
+    let releaseFirst: () => void = () => {}
+    const firstHeld = new Promise<void>((r) => (releaseFirst = r))
+    let calls = 0
+    f.deps.send = async (input) => {
+      calls += 1
+      if (calls === 1) {
+        await firstHeld
+      }
+      return send(input)
+    }
+    const first = ask(f)
+    const controller = new AbortController()
+    const second = ask(f, T, { signal: controller.signal })
+    const expired = ask(f, T, { timeoutMs: 10 })
+    controller.abort()
+    await new Promise((r) => setTimeout(r, 30))
+    releaseFirst()
+    await expect(first).resolves.toMatchObject({ status: 'answered' })
+    await expect(second).resolves.toMatchObject({ status: 'cancelled' })
+    await expect(expired).resolves.toMatchObject({ status: 'timed-out' })
+    expect(calls).toBe(1)
   })
 
   it('reports a failed turn', async () => {
