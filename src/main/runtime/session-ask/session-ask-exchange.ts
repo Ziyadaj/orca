@@ -13,6 +13,7 @@ import type { OrcaSessionId } from '../../../shared/orca-session-address'
 import { sessionAskQuestionText, sessionAskSource } from '../../../shared/session-ask-message'
 import { AGENT_SESSION_NOT_ATTACHED } from '../../native-chat/agent-session-wire/structured-agent-session-mutation-admission'
 import { getStructuredAgentSessionHost } from '../../native-chat/agent-session-wire/structured-agent-session-registry'
+import { mintAgentSessionOperationId } from '../orchestration/structured-pointer-operation-id'
 import { sendAgentTurn, type StructuredSessionTurnOutcome } from '../orchestration/send-agent-turn'
 import { readStructuredSessionGateFacts } from '../orchestration/structured-mailbox-pointer-host'
 import type { OrchestrationDb } from '../orchestration/db'
@@ -34,6 +35,8 @@ export type SessionAskResult = {
   answer: string | null
   target: SessionAskParty
   timeoutMs: number
+  /** Why a `turn-failed` ask got no answer, as a sentence or the journal's verdict. */
+  reason?: string
 }
 
 type SessionAskJournal = Pick<AgentJournalSnapshot, 'items' | 'submissions'>
@@ -90,12 +93,11 @@ async function exchange(
 ): Promise<SessionAskResult> {
   const { target, timeoutMs, signal } = input
   const deadline = deps.now() + timeoutMs
-  const result = (status: SessionAskStatus, answer: string | null = null): SessionAskResult => ({
-    status,
-    answer,
-    target,
-    timeoutMs
-  })
+  const result = (
+    status: SessionAskStatus,
+    answer: string | null = null,
+    reason?: string
+  ): SessionAskResult => ({ status, answer, target, timeoutMs, ...(reason ? { reason } : {}) })
   const stopped = (): SessionAskResult | null =>
     signal?.aborted ? result('cancelled') : deps.now() >= deadline ? result('timed-out') : null
 
@@ -137,7 +139,7 @@ async function exchange(
     return result('target-closed')
   }
   if (outcome.kind === 'refused') {
-    return result('turn-failed')
+    return result('turn-failed', null, outcome.refusal.message)
   }
 
   while (true) {
@@ -156,7 +158,7 @@ async function exchange(
     if (clientMessageId) {
       const read = readSessionAskAnswer(journal, clientMessageId)
       if (read.state === 'failed') {
-        return result('turn-failed')
+        return result('turn-failed', null, read.reason)
       }
       if (read.state === 'answered' && !facts.turnRunning) {
         return result('answered', read.text)
@@ -188,6 +190,11 @@ async function exchange(
     })
     return stopped()
   }
+}
+
+/** The host admits only `<13-digit ms>-<32 hex>` operation ids. */
+export function sessionAskOperationId(now: number): string {
+  return mintAgentSessionOperationId(now)
 }
 
 /** The exchange's reads and send against this host's structured sessions; null with no host. */
@@ -245,6 +252,6 @@ export function createSessionAskDeps(db: OrchestrationDb | null): SessionAskDeps
       })
     },
     now: () => Date.now(),
-    newOperationId: () => `session-ask-${randomUUID()}`
+    newOperationId: () => sessionAskOperationId(Date.now())
   }
 }

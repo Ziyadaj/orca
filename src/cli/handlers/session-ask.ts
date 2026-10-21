@@ -14,6 +14,7 @@ type SessionAskCliResult = {
   answer: string | null
   target: { sessionId: string; name: string | null }
   timeoutMs: number
+  reason?: string
 }
 
 export const SESSION_ASK_HANDLERS: Record<string, CommandHandler> = {
@@ -68,6 +69,6 @@ function sessionAskText(result: SessionAskCliResult): string {
     case 'cancelled':
       return `The question to ${name} was cancelled.`
     case 'turn-failed':
-      return `${name} did not finish answering.`
+      return `${name} did not finish answering${result.reason ? `: ${result.reason}` : '.'}`
   }
 }

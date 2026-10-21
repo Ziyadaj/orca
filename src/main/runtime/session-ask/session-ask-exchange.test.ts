@@ -8,7 +8,8 @@ import type {
 import { isOrcaSessionId, type OrcaSessionId } from '../../../shared/orca-session-address'
 import { sessionAskQuestionText, sessionAskSource } from '../../../shared/session-ask-message'
 import type { StructuredSessionGateFacts } from '../orchestration/structured-session-pointer-delivery'
-import { runSessionAsk, type SessionAskDeps } from './session-ask-exchange'
+import { parseAgentSessionOperationTimestamp } from '../../../shared/agent-session-host-authority'
+import { runSessionAsk, sessionAskOperationId, type SessionAskDeps } from './session-ask-exchange'
 
 function sid(value: string): OrcaSessionId {
   if (!isOrcaSessionId(value)) {
@@ -219,7 +220,23 @@ describe('runSessionAsk', () => {
       })
       return { kind: 'sent', clientMessageId: 'cm1', submission: submission('cm1') }
     }
-    await expect(ask(f)).resolves.toMatchObject({ status: 'turn-failed', answer: null })
+    await expect(ask(f)).resolves.toMatchObject({
+      status: 'turn-failed',
+      answer: null,
+      reason: 'rejected'
+    })
+  })
+
+  it('reports why the host refused the send', async () => {
+    const f = fake()
+    f.deps.send = async () => ({
+      kind: 'refused',
+      refusal: { code: 'agent_session_operation_invalid', message: 'The chat moved on.' }
+    })
+    await expect(ask(f)).resolves.toMatchObject({
+      status: 'turn-failed',
+      reason: 'The chat moved on.'
+    })
   })
 
   it('follows a queued send to the submission that handed it over', async () => {
@@ -235,5 +252,13 @@ describe('runSessionAsk', () => {
       }
     }
     await expect(ask(f)).resolves.toMatchObject({ status: 'answered', answer: 'from the queue' })
+  })
+})
+
+describe('sessionAskOperationId', () => {
+  it('mints an id the host admits as an agent-session operation', () => {
+    expect(parseAgentSessionOperationTimestamp(sessionAskOperationId(1_792_573_188_941))).toBe(
+      1_792_573_188_941
+    )
   })
 })

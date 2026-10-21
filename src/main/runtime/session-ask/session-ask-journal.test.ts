@@ -107,4 +107,44 @@ describe('readSessionAskAnswer', () => {
     ).toEqual({ state: 'pending' })
     expect(readSessionAskAnswer({ items: [], submissions: [] }, CM)).toEqual({ state: 'pending' })
   })
+
+  it('finds the turn through its lifecycle when the sent row is still thread-scoped', () => {
+    // As a live Claude journal reduces: the submission row keeps the orca key and thread scope,
+    // and the completed lifecycle names the provider's user item.
+    const sentRow = item(
+      agentJournalSubmissionKey(CM),
+      { kind: 'message', role: 'user', blocks: [{ type: 'text', text: 'q' }] },
+      { turnScope: { kind: 'thread' } }
+    )
+    const completed = item(
+      TURN_ITEM,
+      { kind: 'turn', turnId: 'turn-1', state: 'completed', userItemId: PROVIDER_USER_ITEM },
+      { turnScope: { kind: 'thread' } }
+    )
+    const snapshot = {
+      items: [sentRow, completed, assistant('a1', 'Falcon, port 6543')],
+      submissions: [submission('accepted')]
+    }
+    expect(readSessionAskAnswer(snapshot, CM)).toEqual({
+      state: 'answered',
+      text: 'Falcon, port 6543'
+    })
+  })
+
+  it('fails a turn the provider ended with an error', () => {
+    const failed = item(
+      TURN_ITEM,
+      {
+        kind: 'turn',
+        turnId: 'turn-1',
+        state: 'completed',
+        outcome: 'failure',
+        userItemId: PROVIDER_USER_ITEM
+      },
+      { turnScope: { kind: 'thread' } }
+    )
+    expect(
+      readSessionAskAnswer({ items: [failed], submissions: [submission('accepted')] }, CM)
+    ).toEqual({ state: 'failed', reason: 'failure' })
+  })
 })

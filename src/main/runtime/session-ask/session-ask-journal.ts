@@ -8,7 +8,16 @@ import { isTextBlock } from '../../../shared/native-chat-types'
 export type SessionAskJournalRead =
   | { state: 'pending' }
   | { state: 'answered'; text: string }
-  | { state: 'failed'; reason: 'interrupted' | 'unverifiable' | 'rejected' }
+  | {
+      state: 'failed'
+      reason:
+        | 'interrupted'
+        | 'unverifiable'
+        | 'rejected'
+        | 'failure'
+        | 'cancellation'
+        | 'superseded'
+    }
 
 /**
  * The asked chat's reply to one send, read off its FULL reduced timeline. A settled turn's
@@ -39,6 +48,11 @@ export function readSessionAskAnswer(
     if (lifecycle.body.state !== 'completed') {
       return { state: 'pending' }
     }
+    // Absent means unknown, not failed; only a recorded non-success verdict fails the ask.
+    const outcome = lifecycle.body.outcome
+    if (outcome && outcome !== 'success') {
+      return { state: 'failed', reason: outcome }
+    }
   }
   return { state: 'answered', text: mainAgentText(snapshot.items, turnItemId) }
 }
@@ -48,11 +62,15 @@ function openedTurnItemId(
   userKeys: ReadonlySet<string>
 ): string | null {
   for (const item of items) {
-    if (item.body.kind === 'message' && userKeys.has(item.itemId)) {
-      return item.turnScope?.kind === 'turn' ? item.turnScope.turnItemId : null
+    if (
+      item.body.kind === 'message' &&
+      userKeys.has(item.itemId) &&
+      item.turnScope?.kind === 'turn'
+    ) {
+      return item.turnScope.turnItemId
     }
   }
-  // A lifecycle row still running names its opener even before the user row is scoped.
+  // The sent row can stay thread-scoped; the turn's lifecycle row names it as its opener.
   for (const item of items) {
     if (item.body.kind === 'turn' && item.body.userItemId && userKeys.has(item.body.userItemId)) {
       return item.itemId

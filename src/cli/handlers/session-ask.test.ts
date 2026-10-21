@@ -75,6 +75,12 @@ describe('orca session ask', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  it('says why the asked session did not answer', async () => {
+    await run(client({ ...answered('turn-failed'), reason: 'The chat moved on.' }))
+    expect(log).toHaveBeenCalledWith('"RCMC handover" did not finish answering: The chat moved on.')
+    expect(process.exitCode).toBe(1)
+  })
+
   it('refuses a host without the capability before asking', async () => {
     const c = client(answered('answered', 'x'), [])
     await expect(run(c)).rejects.toMatchObject({ code: 'incompatible_runtime' })
