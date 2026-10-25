@@ -5,6 +5,7 @@ import {
   AGENT_SESSION_RUNTIME_CAPABILITIES
 } from './agent-session-runtime-capabilities'
 import { AI_VAULT_RUNTIME_CAPABILITIES } from './ai-vault-runtime-capabilities'
+import { SESSION_ASK_RUNTIME_CAPABILITIES } from './session-ask-capability'
 import {
   AUTOMATION_RUNTIME_CAPABILITIES,
   AUTOMATION_RUNTIME_CLIENT_CAPABILITIES
@@ -154,7 +155,8 @@ export const RUNTIME_CAPABILITIES = [
   ...BROWSER_RUNTIME_CAPABILITIES,
   ...SOURCE_CONTROL_RUNTIME_CAPABILITIES,
   ...TASK_SOURCE_RUNTIME_CAPABILITIES,
-  ...AI_VAULT_RUNTIME_CAPABILITIES
+  ...AI_VAULT_RUNTIME_CAPABILITIES,
+  ...SESSION_ASK_RUNTIME_CAPABILITIES
 ] as const
 
 export type RuntimeCapability = (typeof RUNTIME_CAPABILITIES)[number] | (string & {})

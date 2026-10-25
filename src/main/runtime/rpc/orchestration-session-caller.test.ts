@@ -54,7 +54,8 @@ const NAMES_NO_RESOLVED_PARTY: Readonly<Record<string, string>> = {
   'orchestration.federationAttachStart terminal': 'names the remote worker terminal',
   'orchestration.workerTerminalUserInput terminal': 'names the worker terminal',
   'orchestration.workerTerminalUserInput sessionId':
-    'names the worker session, as its terminal does'
+    'names the worker session, as its terminal does',
+  'orchestration.sessionAsk to': 'names the asked chat, which the handler resolves itself'
 }
 
 /** One request per identity-consulting method, valid enough to reach the dispatcher entry. */
@@ -73,7 +74,8 @@ const MINIMAL_PARAMS: Readonly<Record<string, Record<string, unknown>>> = {
   'orchestration.taskCreate': { spec: 's' },
   'orchestration.taskList': {},
   'orchestration.taskUpdate': { id: 'task_missing', status: 'completed' },
-  'orchestration.workerStart': { spec: 's' }
+  'orchestration.workerStart': { spec: 's' },
+  'orchestration.sessionAsk': { to: 'term_worker', question: 'q' }
 }
 
 describe('orchestration session callers at the dispatch entry', () => {
@@ -101,9 +103,9 @@ describe('orchestration session callers at the dispatch entry', () => {
       })
       .sort()
 
-    // The population: 44 registered methods carrying 28 party-naming fields.
-    expect(registry.size).toBe(44)
-    expect(partyNaming).toHaveLength(28)
+    // The population: 45 registered methods carrying 30 party-naming fields.
+    expect(registry.size).toBe(45)
+    expect(partyNaming).toHaveLength(30)
     expect(partyNaming).toEqual(
       [
         ...Object.entries(ORCHESTRATION_CALLER_PARAM).map(

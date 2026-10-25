@@ -80,6 +80,10 @@ export function classifyRuntimeLongPoll(request: RpcRequest): RuntimeLongPollCla
   if (request.method === 'orchestration.ask') {
     return 'ask'
   }
+  // Waits for another chat's whole turn; its own in-flight cap keeps it off the ask pool.
+  if (request.method === 'orchestration.sessionAsk') {
+    return 'wait'
+  }
   if (request.method === 'orchestration.check') {
     const params = request.params as { wait?: unknown } | undefined
     return params?.wait === true ? 'wait' : null
